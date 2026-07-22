@@ -1,0 +1,61 @@
+id,cidade,padrao_bairro,tipo,area_m2,quartos,vagas,ocupado,aceita_financiamento,valor_avaliacao,lance_minimo
+L00001,Goiania,medio,apartamento,36.0,2,0,1,0,199180.0,171593.0
+L00002,Porto Alegre,medio,comercial,97.0,0,1,0,0,550449.0,243246.0
+L00003,Porto Alegre,alto,apartamento,47.0,1,2,1,0,532172.0,244043.0
+L00004,Goiania,alto,casa,70.0,2,2,0,1,603106.0,351263.0
+L00005,Campinas,medio,apartamento,98.0,2,2,1,1,637074.0,587894.0
+L00006,Salvador,medio,casa,36.0,2,2,0,0,184365.0,107887.0
+L00007,Salvador,medio,apartamento,30.0,2,0,1,1,165050.0,102299.0
+L00008,Rio de Janeiro,alto,apartamento,78.0,2,2,0,0,1136698.0,597093.0
+L00009,Sao Paulo,baixo,apartamento,71.0,1,0,1,0,478969.0,398690.0
+L00010,Belo Horizonte,alto,apartamento,63.0,3,1,1,1,661629.0,281625.0
+L00011,Belo Horizonte,medio,terreno,226.0,0,0,1,0,887419.0,410513.0
+L00012,Salvador,baixo,casa,50.0,1,1,0,1,173499.0,153912.0
+L00013,Goiania,medio,apartamento,38.0,1,1,0,0,182869.0,142024.0
+L00014,Sao Paulo,baixo,casa,65.0,3,1,1,1,507186.0,472777.0
+L00015,Curitiba,medio,comercial,47.0,0,1,0,0,293892.0,144883.0
+L00016,Salvador,baixo,apartamento,36.0,2,0,0,0,141726.0,63309.0
+L00017,Rio de Janeiro,alto,casa,86.0,2,1,0,0,1357899.0,550771.0
+L00018,Salvador,medio,casa,68.0,3,2,1,1,364999.0,223906.0
+L00019,Sao Paulo,medio,apartamento,82.0,3,1,1,0,887160.0,517842.0
+L00020,Curitiba,baixo,casa,47.0,2,1,1,0,188337.0,108647.0
+L00021,Salvador,medio,casa,54.0,2,0,1,0,244666.0,155710.0
+L00022,Belo Horizonte,medio,terreno,423.0,0,0,1,0,1630525.0,694877.0
+L00023,Belo Horizonte,alto,apartamento,49.0,2,2,0,0,585403.0,360419.0
+L00024,Belo Horizonte,medio,terreno,212.0,0,0,1,0,798886.0,611428.0
+L00025,Porto Alegre,medio,apartamento,51.0,1,0,1,0,315474.0,210710.0
+L00026,Belo Horizonte,alto,casa,81.0,2,2,0,0,819921.0,770509.0
+L00027,Goiania,baixo,comercial,80.0,0,2,0,1,254626.0,140485.0
+L00028,Curitiba,medio,apartamento,157.0,5,3,1,0,1388444.0,789113.0
+L00029,Curitiba,baixo,apartamento,40.0,2,0,0,1,180354.0,129570.0
+L00030,Campinas,medio,comercial,100.0,0,3,1,0,614310.0,295904.0
+L00031,Campinas,medio,apartamento,68.0,1,0,0,0,403752.0,215789.0
+L00032,Campinas,medio,casa,70.0,1,2,1,1,440887.0,337201.0
+L00033,Campinas,medio,casa,39.0,2,1,0,0,294886.0,267572.0
+L00034,Goiania,alto,casa,58.0,2,1,0,1,435881.0,382389.0
+L00035,Salvador,medio,casa,94.0,2,3,0,0,515374.0,437372.0
+L00036,Salvador,medio,apartamento,68.0,3,0,1,0,347064.0,271698.0
+L00037,Porto Alegre,medio,apartamento,72.0,2,0,0,0,473243.0,333100.0
+L00038,Campinas,alto,apartamento,62.0,3,2,0,0,731427.0,321537.0
+L00039,Belo Horizonte,baixo,apartamento,111.0,3,3,1,0,621825.0,495514.0
+L00040,Goiania,medio,apartamento,69.0,1,2,1,0,345971.0,157686.0
+L00041,Curitiba,medio,terreno,214.0,0,0,1,1,759845.0,437478.0
+L00042,Rio de Janeiro,medio,casa,53.0,1,0,0,0,447330.0,214977.0
+L00043,Salvador,baixo,apartamento,32.0,1,1,0,0,113253.0,82472.0
+L00044,Rio de Janeiro,medio,apartamento,25.0,2,1,1,0,226581.0,214843.0
+L00045,Salvador,alto,terreno,204.0,0,0,0,1,719121.0,371906.0
+L00046,Campinas,baixo,apartamento,119.0,3,3,1,0,732733.0,597169.0
+L00047,Sao Paulo,baixo,terreno,135.0,0,0,0,0,412775.0,359789.0
+L00048,Sao Paulo,baixo,casa,44.0,2,2,0,0,291190.0,148588.0
+L00049,Curitiba,medio,casa,48.0,1,0,0,1,266141.0,152371.0
+L00050,Sao Paulo,alto,comercial,110.0,0,1,1,0,1409672.0,1174499.0
+L00051,Rio de Janeiro,alto,casa,75.0,2,1,1,1,969550.0,778384.0
+L00052,Campinas,baixo,casa,71.0,3,0,0,1,332620.0,144167.0
+L00053,Goiania,medio,apartamento,69.0,3,2,1,0,352090.0,282483.0
+L00054,Curitiba,alto,comercial,71.0,0,2,1,1,714352.0,402664.0
+L00055,Salvador,baixo,apartamento,97.0,2,1,0,0,404340.0,355312.0
+L00056,Goiania,medio,terreno,144.0,0,0,0,0,336640.0,168903.0
+L00057,Salvador,medio,apartamento,76.0,2,0,0,0,431376.0,381908.0
+L00058,Porto Alegre,medio,apartamento,46.0,1,0,0,0,259250.0,172706.0
+L00059,Curitiba,medio,casa,86.0,1,1,0,0,545935.0,508063.0
+L00060,Campinas,medio,terreno,149.0,0,0,0,0,553341.0,358265.0
