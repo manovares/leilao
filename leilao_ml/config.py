@@ -12,14 +12,12 @@ from dataclasses import dataclass, asdict
 @dataclass
 class ConfigCustos:
     # --- custos de aquisição ---
-    comissao_leiloeiro: float = 0.05      # % sobre o lance
-    itbi: float = 0.03                    # % sobre o lance (varia por município)
+    custos_extras: float = 0.15           # % sobre o lance: possível reforma + ITBI + leiloeiro
     registro_cartorio: float = 0.015      # % sobre o lance
     custo_juridico_fixo: float = 5_000.0  # assessoria jurídica / due diligence (R$)
     custo_desocupacao: float = 15_000.0   # ação de imissão na posse, se ocupado (R$)
 
     # --- custos até a venda ---
-    reforma_por_m2: float = 400.0         # R$ por m² (reforma leve/média)
     custo_mensal_posse: float = 0.0015    # % do valor de mercado por mês (IPTU + condomínio)
 
     # --- custos na venda ---

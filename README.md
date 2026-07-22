@@ -4,7 +4,7 @@ Pipeline de machine learning que analisa uma base de imóveis de leilão e, para
 
 1. **Prevê o preço de venda** (revenda pós-reforma) com um modelo de gradient boosting;
 2. **Prevê o tempo até vender** em três cenários — otimista (P25), esperado (P50) e conservador (P90) — usando regressão de quantis;
-3. **Calcula o custo total da operação**: arrematação, comissão do leiloeiro, ITBI, cartório, jurídico, desocupação (se ocupado), reforma, custo de posse (IPTU/condomínio durante o período de venda), corretagem e IR sobre ganho de capital;
+3. **Calcula o custo total da operação**: sobre o lance sempre incidem **+15% de custos extras** (possível reforma + ITBI + comissão do leiloeiro), além de cartório, jurídico, desocupação (se ocupado), custo de posse (IPTU/condomínio durante o período de venda), corretagem e IR sobre ganho de capital;
 4. **Ranqueia as melhores oportunidades** por retorno mensalizado (ROI ajustado pelo tempo de venda no cenário conservador), com score de 0 a 100 e classificação (`excelente / boa / regular / evitar`).
 
 ## Como usar
@@ -53,16 +53,35 @@ Mesmas colunas acima **mais** o resultado de operações passadas:
 
 ## Ajustando as premissas de custo
 
-Os percentuais padrão estão em `leilao_ml/config.py` (leiloeiro 5%, ITBI 3%, cartório 1,5%, reforma R$ 400/m², desocupação R$ 15.000, corretagem 6%, IR 15% etc.). Para usar valores próprios:
+Os percentuais padrão estão em `leilao_ml/config.py` (**custos extras +15% sobre o lance** — possível reforma + ITBI + leiloeiro —, cartório 1,5%, desocupação R$ 15.000, corretagem 6%, IR 15% etc.). Para usar valores próprios:
 
 ```python
 from leilao_ml.config import ConfigCustos
-ConfigCustos(itbi=0.02, reforma_por_m2=600).para_json("custos.json")
+ConfigCustos(custos_extras=0.18).para_json("custos.json")
 ```
 
 ```bash
 python analisar.py --dados edital.csv --config custos.json
 ```
+
+## Front-end (dashboard)
+
+O dashboard em `frontend/` mostra os KPIs do lote, o top 10 por retorno mensal, o ranking completo (ordenável, com detalhamento de custos por imóvel) e um **simulador de arremate** que sempre aplica os +15% de custos extras. É 100% estático — basta abrir `frontend/index.html` no navegador.
+
+Para atualizar os dados exibidos após uma nova análise:
+
+```bash
+python exportar_frontend.py --dados data/exemplo_leilao.csv
+```
+
+### Deploy na Vercel
+
+O `vercel.json` já aponta a pasta `frontend/` como saída estática. Basta:
+
+1. Acessar [vercel.com/new](https://vercel.com/new) e importar este repositório do GitHub; **ou**
+2. Rodar `npx vercel --prod` na raiz do projeto (requer login na Vercel).
+
+Nenhum build é necessário — a Vercel serve os arquivos estáticos diretamente.
 
 ## Estrutura do projeto
 
