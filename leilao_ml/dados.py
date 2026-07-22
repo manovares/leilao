@@ -61,6 +61,21 @@ def carregar_csv(caminho: str, treino: bool = False) -> pd.DataFrame:
     return df
 
 
+def carregar_qualquer(caminho: str, treino: bool = False) -> pd.DataFrame:
+    """Carrega um CSV no esquema do pipeline OU a lista oficial da Caixa,
+    detectando o formato automaticamente."""
+    from .caixa import carregar_caixa, eh_planilha_caixa
+
+    if eh_planilha_caixa(caminho):
+        if treino:
+            raise ValueError(
+                "A lista da Caixa não tem resultado de operações passadas "
+                "(preco_venda_real / dias_ate_venda) e não serve para treino."
+            )
+        return carregar_caixa(caminho)
+    return carregar_csv(caminho, treino=treino)
+
+
 def gerar_dados_sinteticos(n: int = 4000, seed: int = 42) -> pd.DataFrame:
     """Gera um histórico sintético de operações para demonstração.
 

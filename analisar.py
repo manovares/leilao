@@ -12,7 +12,7 @@ import pathlib
 import joblib
 
 from leilao_ml.config import ConfigCustos
-from leilao_ml.dados import carregar_csv
+from leilao_ml.dados import carregar_qualquer
 from leilao_ml.oportunidades import analisar_oportunidades, imprimir_relatorio
 
 
@@ -34,7 +34,7 @@ def main() -> None:
     modelos_tempo = joblib.load(pasta / "modelos_tempo.joblib")
     cfg = ConfigCustos.de_json(args.config) if args.config else ConfigCustos()
 
-    df = carregar_csv(args.dados)
+    df = carregar_qualquer(args.dados)
     resultado = analisar_oportunidades(df, modelo_preco, modelos_tempo, cfg)
     resultado.to_csv(args.saida, index=False)
 

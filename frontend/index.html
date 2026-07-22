@@ -207,6 +207,8 @@
   .det-grade .l span:last-child { color: var(--ink); font-variant-numeric: tabular-nums; }
 
   footer { margin-top: 28px; color: var(--muted); font-size: 0.8rem; max-width: 75ch; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -233,7 +235,7 @@
     <div class="zona" id="zona" tabindex="0" role="button" aria-label="Enviar planilha CSV">
       <div class="icone">📄</div>
       <div class="principal">Arraste sua planilha aqui ou clique para escolher</div>
-      <div class="apoio">Arquivo .csv (do Excel: Salvar como → CSV). Valores como "R$ 123.456,78" são aceitos.</div>
+      <div class="apoio">Aceita a <b>Lista de Imóveis da Caixa</b> (CSV baixado de venda-imoveis.caixa.gov.br) exatamente como ela vem, ou qualquer .csv com avaliação e lance. Valores como "R$ 123.456,78" são aceitos.</div>
       <input type="file" id="arquivo" accept=".csv,text/csv">
     </div>
     <div id="erro" class="erro" hidden></div>
@@ -246,7 +248,7 @@
     <div class="passos">
       <div class="passo"><span class="num">1</span>
         <h3>Envie a planilha</h3>
-        <p>Só precisa de duas colunas: valor de avaliação e lance mínimo (preço). Lote, cidade, tipo, área e ocupação são opcionais e enriquecem a análise.</p>
+        <p>A lista da Caixa funciona direto — tipo, área, quartos e link do anúncio são extraídos automaticamente. De outra origem, basta ter valor de avaliação e lance mínimo.</p>
       </div>
       <div class="passo"><span class="num">2</span>
         <h3>O sistema analisa</h3>
@@ -307,8 +309,9 @@
   <!-- ================= EXEMPLO DO MODELO ================= -->
   <section id="vista-modelo" hidden>
     <p class="subtitulo" style="color:var(--ink-2); max-width:68ch; margin:0 0 6px">
-      Demonstração com o modelo de machine learning treinado: preço de revenda previsto,
-      prazo de venda (P50/P90) e ranking por retorno mensal, sobre a base de exemplo.
+      Previsões do modelo de machine learning — preço de revenda, prazo de venda (P50/P90)
+      e ranking por retorno mensal — sobre a base analisada (nome no primeiro cartão).
+      Para reprocessar outra planilha: <code>python exportar_frontend.py --dados arquivo.csv</code>.
     </p>
 
     <div class="tiles" id="tiles"></div>
@@ -344,7 +347,7 @@
 
     <div class="cartao tabela-cartao">
       <h2>Ranking completo</h2>
-      <p class="nota">Clique no cabeçalho para ordenar e em uma linha para abrir o detalhamento.</p>
+      <p class="nota" id="md-tabela-nota">Clique no cabeçalho para ordenar e em uma linha para abrir o detalhamento.</p>
       <table>
         <thead><tr id="cabecalho"></tr></thead>
         <tbody id="corpo"></tbody>
@@ -421,8 +424,8 @@
   $("ver-exemplo").addEventListener("click", () => mostrarVista("modelo"));
 
   /* ============ leitura da planilha (CSV) ============ */
-  const normalizar = s => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
-    .replace(/[^a-z0-9%]+/g, " ").trim();
+  const semAcento = s => String(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const normalizar = s => semAcento(s).replace(/[^a-z0-9%]+/g, " ").trim();
 
   function lerNumeroBR(v) {
     if (typeof v === "number") return v;
@@ -475,7 +478,39 @@
     tipo: ["tipo", "tipo de imovel", "tipo do imovel"],
     area: ["area m2", "area", "area total", "area privativa", "area util", "m2", "metragem"],
     ocupado: ["ocupado", "ocupacao", "situacao", "situacao do imovel"],
+    descricao: ["descricao"],
+    financiamento: ["financiamento", "aceita financiamento"],
+    modalidade: ["modalidade de venda", "modalidade"],
+    link: ["link de acesso", "link", "url"],
+    endereco: ["endereco"],
+    uf: ["uf", "estado"],
   };
+
+  /* tipo, área, quartos e vagas escondidos na "Descrição" da lista da Caixa */
+  function extrairDescricao(txt) {
+    const n = semAcento(txt);
+    const num = re => { const m = n.match(re); return m ? parseFloat(m[1].replace(",", ".")) : NaN; };
+    const tipo = (n.split(",")[0] || "").trim();
+    const priv = num(/([\d.,]+) de area privativa/);
+    const total = num(/([\d.,]+) de area total/);
+    const terreno = num(/([\d.,]+) de area do terreno/);
+    let area = priv > 0 ? priv : (total > 0 ? total : NaN);
+    if (!(area > 0) && tipo.includes("terreno")) area = terreno > 0 ? terreno : NaN;
+    return { tipo, area, quartos: num(/(\d+) qto/), vagas: num(/(\d+) vaga/) };
+  }
+
+  /* pula banner/linhas soltas antes do cabeçalho (ex.: lista da Caixa) */
+  function recortarCabecalho(texto) {
+    const linhas = texto.split(/\r?\n/);
+    const limite = Math.min(linhas.length, 20);
+    for (let i = 0; i < limite; i++) {
+      const n = normalizar(linhas[i]);
+      if (n.includes("avalia") && (n.includes("preco") || n.includes("lance"))) {
+        return linhas.slice(i).join("\n");
+      }
+    }
+    return texto;
+  }
 
   function acharColunas(cabecalhos) {
     const norm = cabecalhos.map(normalizar);
@@ -492,7 +527,7 @@
   }
 
   function analisarPlanilha(texto, nomeArquivo) {
-    const linhas = dividirCSV(texto);
+    const linhas = dividirCSV(recortarCabecalho(texto));
     if (linhas.length < 2) throw new Error("A planilha precisa de um cabeçalho e ao menos uma linha de dados.");
     const cols = acharColunas(linhas[0]);
     if (cols.avaliacao === undefined || cols.lance === undefined) {
@@ -500,20 +535,39 @@
         "Colunas lidas: " + linhas[0].map(c => `<code>${c}</code>`).join(", ") +
         ". Renomeie no Excel ou use a planilha modelo.");
     }
+    // a lista da Caixa não informa ocupação: assumimos ocupado (conservador)
+    const semColunaOcupacao = cols.ocupado === undefined;
+    const pega = (l, chave) => cols[chave] !== undefined ? String(l[cols[chave]] || "").trim() : "";
     const lotes = [];
     for (let i = 1; i < linhas.length; i++) {
       const l = linhas[i];
       const avaliacao = lerNumeroBR(l[cols.avaliacao]);
       const lance = lerNumeroBR(l[cols.lance]);
       if (!isFinite(avaliacao) || !isFinite(lance) || avaliacao <= 0 || lance <= 0) continue;
-      const ocupTexto = cols.ocupado !== undefined ? normalizar(String(l[cols.ocupado] || "")) : "";
+
+      const desc = pega(l, "descricao");
+      const daDesc = desc ? extrairDescricao(desc) : { tipo: "", area: NaN, quartos: NaN, vagas: NaN };
+      const ocupTexto = normalizar(pega(l, "ocupado"));
+      let ocupado;
+      if (semColunaOcupacao) ocupado = 1;
+      else ocupado = ocupTexto.includes("desocupado") ? 0
+        : (ocupTexto.includes("ocupado") || ocupTexto === "1" || ocupTexto === "sim" ? 1 : 0);
+
+      const areaCol = cols.area !== undefined ? lerNumeroBR(l[cols.area]) : NaN;
       lotes.push({
-        id: cols.id !== undefined && l[cols.id] ? String(l[cols.id]).trim() : "linha " + (i + 1),
-        cidade: cols.cidade !== undefined ? String(l[cols.cidade] || "").trim() : "",
-        bairro: cols.bairro !== undefined ? String(l[cols.bairro] || "").trim() : "",
-        tipo: cols.tipo !== undefined ? String(l[cols.tipo] || "").trim().toLowerCase() : "",
-        area: cols.area !== undefined ? lerNumeroBR(l[cols.area]) : NaN,
-        ocupado: ocupTexto.includes("desocupado") ? 0 : (ocupTexto.includes("ocupado") || ocupTexto === "1" || ocupTexto === "sim" ? 1 : 0),
+        id: pega(l, "id") || "linha " + (i + 1),
+        cidade: cap(pega(l, "cidade").toLowerCase()) || "",
+        uf: pega(l, "uf"),
+        bairro: pega(l, "bairro"),
+        endereco: pega(l, "endereco"),
+        tipo: (pega(l, "tipo") || daDesc.tipo || "").toLowerCase(),
+        area: isFinite(areaCol) && areaCol > 0 ? areaCol : daDesc.area,
+        quartos: daDesc.quartos,
+        vagas: daDesc.vagas,
+        financiamento: normalizar(pega(l, "financiamento")) === "sim" ? 1 : 0,
+        modalidade: pega(l, "modalidade"),
+        link: /^https?:\/\//.test(pega(l, "link")) ? pega(l, "link") : "",
+        ocupado, ocupacaoAssumida: semColunaOcupacao,
         valor_avaliacao: avaliacao,
         lance_minimo: lance,
         desconto: 1 - lance / avaliacao,
@@ -549,7 +603,9 @@
     { k: "lucro", t: "Lucro líq.", f: v => `<span class="${v >= 0 ? "positivo" : "negativo"}">${brl(v)}</span>` },
     { k: "roi", t: "ROI", f: v => pct(v, 1) },
     { k: "classificacao", t: "Classificação", esq: true, f: chipCls },
+    { k: "link", t: "Anúncio", esq: true, f: v => v ? `<a href="${v}" target="_blank" rel="noopener">abrir ↗</a>` : "—" },
   ];
+  const MAX_LINHAS = 300;
 
   function desenharPlanilha() {
     const dados = calcularPlanilha();
@@ -615,13 +671,17 @@
       const cmp = typeof va === "string" ? String(va).localeCompare(String(vb)) : va - vb;
       return plOrdem.asc ? cmp : -cmp;
     });
-    $("pl-corpo").innerHTML = lista.map((d, ix) => `
+    const visiveis = lista.slice(0, MAX_LINHAS);
+    $("pl-tabela-nota").textContent = (lista.length > MAX_LINHAS
+      ? `Mostrando os ${MAX_LINHAS} primeiros de ${lista.length} lotes na ordenação atual. `
+      : "") + "Clique no cabeçalho para reordenar e em uma linha para o detalhamento de custos.";
+    $("pl-corpo").innerHTML = visiveis.map((d, ix) => `
       <tr class="linha" tabindex="0" data-ix="${ix}">
         ${plColunas.map(c => `<td class="${c.esq ? "esq" : ""}">${c.f(d[c.k])}</td>`).join("")}
       </tr>`).join("");
     $("pl-corpo").querySelectorAll("tr.linha").forEach(tr => {
-      const abrir = () => alternarDetalhePlanilha(tr, lista[+tr.dataset.ix]);
-      tr.addEventListener("click", abrir);
+      const abrir = () => alternarDetalhePlanilha(tr, visiveis[+tr.dataset.ix]);
+      tr.addEventListener("click", ev => { if (ev.target.closest("a")) return; abrir(); });
       tr.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); abrir(); } });
     });
   }
@@ -634,12 +694,16 @@
     det.className = "detalhe";
     det.innerHTML = `<td colspan="${plColunas.length}"><div class="det-grade">
       <div><h3>Lote</h3>
-        ${d.bairro ? `<div class="l"><span>Bairro</span><span>${d.bairro}</span></div>` : ""}
+        ${d.endereco ? `<div class="l"><span>Endereço</span><span>${d.endereco}${d.bairro ? ", " + d.bairro : ""}</span></div>` : (d.bairro ? `<div class="l"><span>Bairro</span><span>${d.bairro}</span></div>` : "")}
         ${isFinite(d.area) ? `<div class="l"><span>Área</span><span>${d.area} m²</span></div>` : ""}
-        <div class="l"><span>Situação</span><span>${d.ocupado ? "Ocupado" : "Sem indicação / desocupado"}</span></div>
+        ${isFinite(d.quartos) && d.quartos > 0 ? `<div class="l"><span>Quartos / vagas</span><span>${d.quartos} / ${isFinite(d.vagas) ? d.vagas : 0}</span></div>` : ""}
+        ${d.modalidade ? `<div class="l"><span>Modalidade</span><span>${d.modalidade}</span></div>` : ""}
+        <div class="l"><span>Financiamento</span><span>${d.financiamento ? "Aceita" : "Não aceita"}</span></div>
+        <div class="l"><span>Situação</span><span>${d.ocupacaoAssumida ? "Sem indicação — assumido ocupado" : (d.ocupado ? "Ocupado" : "Desocupado")}</span></div>
         <div class="l"><span>Avaliação</span><span>${brl(d.valor_avaliacao)}</span></div>
         <div class="l"><span>Lance mínimo</span><span>${brl(d.lance_minimo)}</span></div>
         <div class="l"><span><b>Desconto</b></span><span><b>${pct(d.desconto, 1)}</b></span></div>
+        ${d.link ? `<div class="l"><span>Anúncio</span><span><a href="${d.link}" target="_blank" rel="noopener">ver no site do leilão ↗</a></span></div>` : ""}
       </div>
       <div><h3>Custos da operação</h3>
         <div class="l"><span>Custos extras (+15%: reforma, ITBI, leiloeiro)</span><span>${brl(d.extras)}</span></div>
@@ -673,7 +737,10 @@
     const leitor = new FileReader();
     leitor.onload = () => {
       try {
-        planilha = analisarPlanilha(leitor.result, f.name);
+        // detecta a codificação: a lista da Caixa vem em ISO-8859-1
+        let texto = new TextDecoder("utf-8").decode(leitor.result);
+        if (texto.includes("\uFFFD")) texto = new TextDecoder("windows-1252").decode(leitor.result);
+        planilha = analisarPlanilha(texto, f.name);
         $("aba-planilha").hidden = false;
         desenharPlanilha();
         mostrarVista("planilha");
@@ -682,7 +749,7 @@
         erro.hidden = false;
       }
     };
-    leitor.readAsText(f, "utf-8");
+    leitor.readAsArrayBuffer(f);
   }
   zona.addEventListener("click", () => arquivo.click());
   zona.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); arquivo.click(); } });
@@ -752,6 +819,7 @@
     { k: "retorno_mensal", t: "Ret. mensal", f: v => pct(v, 2) },
     { k: "score", t: "Score", f: v => v },
     { k: "classificacao", t: "Classificação", esq: true, f: chipCls },
+    { k: "link", t: "Anúncio", esq: true, f: v => v ? `<a href="${v}" target="_blank" rel="noopener">abrir ↗</a>` : "—" },
   ];
   let ordem = { k: "retorno_mensal", asc: false };
   function desenharCabecalho() {
@@ -765,13 +833,17 @@
       const cmp = typeof va === "string" ? va.localeCompare(vb) : va - vb;
       return ordem.asc ? cmp : -cmp;
     });
-    $("corpo").innerHTML = lista.map((i, ix) => `
+    const visiveis = lista.slice(0, MAX_LINHAS);
+    $("md-tabela-nota").textContent = (lista.length > MAX_LINHAS
+      ? `Mostrando os ${MAX_LINHAS} primeiros de ${lista.length} imóveis na ordenação atual. `
+      : "") + "Clique no cabeçalho para ordenar e em uma linha para abrir o detalhamento.";
+    $("corpo").innerHTML = visiveis.map((i, ix) => `
       <tr class="linha" tabindex="0" data-ix="${ix}">
         ${colunas.map(c => `<td class="${c.esq ? "esq" : ""}">${c.f(i[c.k])}</td>`).join("")}
       </tr>`).join("");
     $("corpo").querySelectorAll("tr.linha").forEach(tr => {
-      const abrir = () => alternarDetalheModelo(tr, lista[+tr.dataset.ix]);
-      tr.addEventListener("click", abrir);
+      const abrir = () => alternarDetalheModelo(tr, visiveis[+tr.dataset.ix]);
+      tr.addEventListener("click", ev => { if (ev.target.closest("a")) return; abrir(); });
       tr.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); abrir(); } });
     });
   }
@@ -785,11 +857,14 @@
     det.className = "detalhe";
     det.innerHTML = `<td colspan="${colunas.length}"><div class="det-grade">
       <div><h3>Imóvel</h3>
+        ${i.endereco ? `<div class="l"><span>Endereço</span><span>${i.endereco}${i.bairro ? ", " + i.bairro : ""}</span></div>` : ""}
         <div class="l"><span>Área</span><span>${i.area_m2} m²</span></div>
         <div class="l"><span>Quartos / vagas</span><span>${i.quartos} / ${i.vagas}</span></div>
-        <div class="l"><span>Padrão do bairro</span><span>${cap(i.padrao_bairro)}</span></div>
-        <div class="l"><span>Situação</span><span>${i.ocupado ? "Ocupado" : "Desocupado"}</span></div>
+        ${i.modalidade ? `<div class="l"><span>Modalidade</span><span>${i.modalidade}</span></div>` : `<div class="l"><span>Padrão do bairro</span><span>${cap(i.padrao_bairro)}</span></div>`}
+        <div class="l"><span>Financiamento</span><span>${i.aceita_financiamento ? "Aceita" : "Não aceita"}</span></div>
+        <div class="l"><span>Situação</span><span>${i.ocupado ? "Ocupado (assumido)" : "Desocupado"}</span></div>
         <div class="l"><span>Valor de avaliação</span><span>${brl(i.valor_avaliacao)}</span></div>
+        ${i.link ? `<div class="l"><span>Anúncio</span><span><a href="${i.link}" target="_blank" rel="noopener">ver no site do leilão ↗</a></span></div>` : ""}
       </div>
       <div><h3>Custos da operação</h3>
         <div class="l"><span>Lance + cartório + jurídico${i.ocupado ? " + desocupação" : ""}</span><span>${brl(custoBase)}</span></div>

@@ -23,7 +23,18 @@ A saída é impressa no terminal e o ranking completo é salvo em `resultado_opo
 
 ## Usando seus próprios dados
 
-### Imóveis a analisar (`analisar.py --dados seu_edital.csv`)
+### Lista de Imóveis da Caixa (formato oficial)
+
+O CSV baixado de [venda-imoveis.caixa.gov.br](https://venda-imoveis.caixa.gov.br) funciona **sem nenhuma alteração**, tanto no front-end (upload) quanto nos scripts — o formato é detectado automaticamente (codificação ISO-8859-1, banner, separador `;`), e tipo, área, quartos, vagas e link do anúncio são extraídos do campo "Descrição":
+
+```bash
+python analisar.py --dados data/Lista_imoveis_SP.csv
+python exportar_frontend.py --dados data/Lista_imoveis_SP.csv --top 1000
+```
+
+Como a lista não informa ocupação, o custo de desocupação é incluído por padrão (conservador).
+
+### Outros formatos (`analisar.py --dados seu_edital.csv`)
 
 CSV com as colunas:
 
