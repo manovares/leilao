@@ -60,18 +60,73 @@
     color: var(--ink);
     font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
   }
-  .wrap { max-width: 1100px; margin: 0 auto; padding: 28px 20px 64px; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 20px 64px; }
 
-  header.topo { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-bottom: 6px; }
-  h1 { font-size: 1.45rem; margin: 0; letter-spacing: -0.01em; }
-  .subtitulo { color: var(--ink-2); margin: 0 0 20px; max-width: 68ch; }
+  header.topo { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin-bottom: 22px; }
+  h1 { font-size: 1.35rem; margin: 0; letter-spacing: -0.01em; cursor: pointer; }
+  nav.abas { display: flex; gap: 4px; margin-left: auto; }
+  .aba {
+    border: 1px solid transparent; background: none; color: var(--ink-2);
+    font: inherit; font-size: 0.88rem; padding: 5px 12px; border-radius: 6px; cursor: pointer;
+  }
+  .aba:hover { color: var(--ink); background: var(--accent-soft); }
+  .aba.ativa { color: var(--accent); border-color: var(--border); background: var(--surface); font-weight: 600; }
+  .aba:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
   .regra15 {
     display: inline-block; background: var(--accent-soft); color: var(--ink);
     border: 1px solid var(--border); border-radius: 6px;
     padding: 2px 10px; font-size: 0.85rem;
   }
 
-  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin: 20px 0 24px; }
+  /* ---------- página inicial ---------- */
+  .hero { max-width: 62ch; margin: 34px auto 26px; text-align: center; }
+  .hero h2 { font-size: 1.9rem; line-height: 1.2; margin: 0 0 10px; letter-spacing: -0.015em; text-wrap: balance; }
+  .hero p { color: var(--ink-2); margin: 0 0 14px; }
+
+  .zona {
+    max-width: 640px; margin: 0 auto; background: var(--surface);
+    border: 2px dashed var(--baseline); border-radius: 12px;
+    padding: 38px 26px; text-align: center; cursor: pointer; transition: border-color 0.15s, background 0.15s;
+  }
+  .zona:hover, .zona.arrastando { border-color: var(--accent); background: var(--accent-soft); }
+  .zona:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .zona .icone { font-size: 2rem; }
+  .zona .principal { font-weight: 650; margin: 8px 0 2px; }
+  .zona .apoio { color: var(--muted); font-size: 0.85rem; }
+  .zona input { display: none; }
+
+  .acoes-inicio { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 16px auto 0; }
+  .botao {
+    border: 1px solid var(--border); background: var(--surface); color: var(--ink);
+    font: inherit; font-size: 0.88rem; padding: 8px 16px; border-radius: 8px; cursor: pointer;
+  }
+  .botao:hover { background: var(--accent-soft); }
+  .botao.primario { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .botao.primario:hover { filter: brightness(1.08); background: var(--accent); }
+  .botao:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .erro {
+    max-width: 640px; margin: 14px auto 0; border: 1px solid var(--critical);
+    background: rgba(208, 59, 59, 0.10); color: var(--ink);
+    border-radius: 8px; padding: 10px 14px; font-size: 0.88rem; text-align: left;
+  }
+
+  .passos { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; max-width: 900px; margin: 34px auto 0; }
+  .passo { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .passo .num {
+    display: inline-flex; width: 24px; height: 24px; border-radius: 50%;
+    background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: 0.8rem;
+    align-items: center; justify-content: center; margin-bottom: 8px;
+  }
+  .passo h3 { margin: 0 0 4px; font-size: 0.95rem; }
+  .passo p { margin: 0; color: var(--ink-2); font-size: 0.85rem; }
+
+  .colunas-nota { max-width: 900px; margin: 18px auto 0; color: var(--muted); font-size: 0.82rem; text-align: center; }
+  .colunas-nota code { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; }
+
+  /* ---------- painéis ---------- */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin: 18px 0 22px; }
   .tile { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
   .tile .rotulo { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
   .tile .valor { font-size: 1.55rem; font-weight: 650; margin-top: 2px; }
@@ -83,8 +138,11 @@
   .cartao h2 { font-size: 1rem; margin: 0 0 4px; }
   .cartao .nota { font-size: 0.82rem; color: var(--muted); margin: 0 0 14px; }
 
-  /* gráfico de barras horizontais */
-  .linha-barra { display: grid; grid-template-columns: 150px 1fr; gap: 10px; align-items: center; padding: 4px 0; cursor: default; }
+  .premissas { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: end; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; margin-top: 16px; }
+  .premissas .campo { max-width: 210px; }
+  .premissas .info { color: var(--muted); font-size: 0.8rem; margin-left: auto; max-width: 44ch; }
+
+  .linha-barra { display: grid; grid-template-columns: 170px 1fr; gap: 10px; align-items: center; padding: 4px 0; cursor: default; }
   .linha-barra .nome { font-size: 0.82rem; color: var(--ink-2); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pista { position: relative; height: 18px; }
   .pista::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 1px; background: var(--baseline); }
@@ -95,13 +153,12 @@
   .dica {
     position: fixed; z-index: 30; pointer-events: none; display: none;
     background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
-    box-shadow: 0 4px 18px rgba(0,0,0,0.18); padding: 10px 12px; font-size: 0.82rem; max-width: 260px;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.18); padding: 10px 12px; font-size: 0.82rem; max-width: 280px;
   }
   .dica b { display: block; margin-bottom: 4px; }
   .dica .l { display: flex; justify-content: space-between; gap: 14px; color: var(--ink-2); }
   .dica .l span:last-child { color: var(--ink); font-variant-numeric: tabular-nums; }
 
-  /* simulador */
   .form-grade { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
   .campo { display: flex; flex-direction: column; gap: 3px; }
   .campo label { font-size: 0.78rem; color: var(--ink-2); }
@@ -119,9 +176,8 @@
   .positivo { color: var(--good-text) !important; }
   .negativo { color: var(--critical) !important; }
 
-  /* tabela */
   .tabela-cartao { margin-top: 12px; overflow-x: auto; }
-  table { border-collapse: collapse; width: 100%; min-width: 900px; font-size: 0.85rem; }
+  table { border-collapse: collapse; width: 100%; min-width: 860px; font-size: 0.85rem; }
   thead th {
     text-align: right; font-weight: 600; color: var(--muted); font-size: 0.72rem;
     text-transform: uppercase; letter-spacing: 0.05em; padding: 8px 10px;
@@ -151,59 +207,150 @@
   .det-grade .l span:last-child { color: var(--ink); font-variant-numeric: tabular-nums; }
 
   footer { margin-top: 28px; color: var(--muted); font-size: 0.8rem; max-width: 75ch; }
+  [hidden] { display: none !important; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header class="topo">
-    <h1>Leilão ML</h1>
+    <h1 id="logo" title="Voltar ao início">🏠 Leilão ML</h1>
     <span class="regra15">custos sempre com +15% sobre o lance: possível reforma + ITBI + leiloeiro</span>
+    <nav class="abas" aria-label="Seções">
+      <button class="aba ativa" data-vista="inicio">Início</button>
+      <button class="aba" data-vista="planilha" id="aba-planilha" hidden>Minha planilha</button>
+      <button class="aba" data-vista="modelo">Exemplo do modelo</button>
+    </nav>
   </header>
-  <p class="subtitulo">
-    Ranking de oportunidades em imóveis de leilão gerado pelo modelo de machine learning:
-    preço de revenda previsto, prazo estimado de venda (cenários P50 e P90) e custo total da
-    operação. Clique em uma linha da tabela para ver o detalhamento de custos.
-  </p>
 
-  <div class="tiles" id="tiles"></div>
-
-  <div class="grade">
-    <div class="cartao">
-      <h2>Top 10 — retorno mensal estimado</h2>
-      <p class="nota">ROI convertido em % ao mês usando o prazo conservador (P90). Passe o mouse para detalhes.</p>
-      <div id="grafico"></div>
+  <!-- ================= PÁGINA INICIAL ================= -->
+  <section id="vista-inicio">
+    <div class="hero">
+      <h2>Envie a planilha do leilão e encontre os maiores descontos</h2>
+      <p>O sistema lê os lotes, aplica os custos da operação (+15% sobre o lance) e
+         ranqueia as melhores oportunidades — as com maior desconto sobre a avaliação e maior lucro estimado.</p>
     </div>
 
-    <div class="cartao">
-      <h2>Simulador de arremate</h2>
-      <p class="nota">Calcule qualquer cenário — os +15% de custos extras já entram automaticamente.</p>
-      <div class="form-grade">
-        <div class="campo">
-          <label for="s-lance">Lance (R$)</label>
-          <input id="s-lance" type="number" value="300000" min="0" step="1000">
-        </div>
-        <div class="campo">
-          <label for="s-venda">Preço de venda esperado (R$)</label>
-          <input id="s-venda" type="number" value="450000" min="0" step="1000">
-        </div>
-        <div class="campo">
-          <label for="s-meses">Prazo até vender (meses)</label>
-          <input id="s-meses" type="number" value="4" min="1" max="36" step="0.5">
-        </div>
-        <label class="check"><input id="s-ocupado" type="checkbox"> Imóvel ocupado (soma custo de desocupação)</label>
+    <div class="zona" id="zona" tabindex="0" role="button" aria-label="Enviar planilha CSV">
+      <div class="icone">📄</div>
+      <div class="principal">Arraste sua planilha aqui ou clique para escolher</div>
+      <div class="apoio">Arquivo .csv (do Excel: Salvar como → CSV). Valores como "R$ 123.456,78" são aceitos.</div>
+      <input type="file" id="arquivo" accept=".csv,text/csv">
+    </div>
+    <div id="erro" class="erro" hidden></div>
+
+    <div class="acoes-inicio">
+      <button class="botao" id="baixar-modelo">Baixar planilha modelo</button>
+      <button class="botao" id="ver-exemplo">Ver exemplo com o modelo de ML</button>
+    </div>
+
+    <div class="passos">
+      <div class="passo"><span class="num">1</span>
+        <h3>Envie a planilha</h3>
+        <p>Só precisa de duas colunas: valor de avaliação e lance mínimo (preço). Lote, cidade, tipo, área e ocupação são opcionais e enriquecem a análise.</p>
       </div>
-      <div class="sim-out" id="sim-out"></div>
+      <div class="passo"><span class="num">2</span>
+        <h3>O sistema analisa</h3>
+        <p>Para cada lote: desconto sobre a avaliação, custo total com os +15% (reforma, ITBI, leiloeiro), cartório, jurídico e desocupação, lucro estimado e ROI.</p>
+      </div>
+      <div class="passo"><span class="num">3</span>
+        <h3>Veja as oportunidades</h3>
+        <p>Ranking pelos maiores descontos, gráfico do top 10 e detalhamento de custos por lote — é só clicar na linha.</p>
+      </div>
     </div>
-  </div>
 
-  <div class="cartao tabela-cartao">
-    <h2>Ranking completo</h2>
-    <p class="nota">Clique no cabeçalho para ordenar e em uma linha para abrir o detalhamento.</p>
-    <table id="tabela">
-      <thead><tr id="cabecalho"></tr></thead>
-      <tbody id="corpo"></tbody>
-    </table>
-  </div>
+    <p class="colunas-nota">
+      Colunas reconhecidas automaticamente: <code>valor_avaliacao</code>/<code>Valor de avaliação</code>,
+      <code>lance_minimo</code>/<code>Preço</code>/<code>Lance</code>, <code>id</code>/<code>Lote</code>,
+      <code>cidade</code>, <code>bairro</code>, <code>tipo</code>, <code>area_m2</code>/<code>Área</code>, <code>ocupado</code>.
+    </p>
+  </section>
+
+  <!-- ================= RESULTADO DA PLANILHA ================= -->
+  <section id="vista-planilha" hidden>
+    <div class="premissas">
+      <div class="campo">
+        <label for="p-meses">Prazo estimado de venda (meses)</label>
+        <input id="p-meses" type="number" value="4" min="1" max="36" step="0.5">
+      </div>
+      <div class="campo">
+        <label for="p-pct-venda">Preço de venda (% do valor de avaliação)</label>
+        <input id="p-pct-venda" type="number" value="100" min="30" max="200" step="5">
+      </div>
+      <div class="info">O lucro usa estas premissas + os custos fixos (+15% sobre o lance, cartório 1,5%, jurídico, desocupação se ocupado, corretagem 6%, IR 15%).</div>
+    </div>
+
+    <div class="tiles" id="pl-tiles"></div>
+
+    <div class="grade">
+      <div class="cartao">
+        <h2>Top 10 — maiores descontos</h2>
+        <p class="nota">Desconto do lance mínimo sobre o valor de avaliação. Passe o mouse para detalhes.</p>
+        <div id="pl-grafico"></div>
+      </div>
+      <div class="cartao">
+        <h2>Melhor oportunidade</h2>
+        <p class="nota" id="pl-melhor-nota"></p>
+        <div class="sim-out" id="pl-melhor" style="margin-top:0; border-top:none; padding-top:0"></div>
+      </div>
+    </div>
+
+    <div class="cartao tabela-cartao">
+      <h2>Ranking da sua planilha</h2>
+      <p class="nota" id="pl-tabela-nota">Ordenado pelos maiores descontos. Clique no cabeçalho para reordenar e em uma linha para o detalhamento de custos.</p>
+      <table>
+        <thead><tr id="pl-cabecalho"></tr></thead>
+        <tbody id="pl-corpo"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ================= EXEMPLO DO MODELO ================= -->
+  <section id="vista-modelo" hidden>
+    <p class="subtitulo" style="color:var(--ink-2); max-width:68ch; margin:0 0 6px">
+      Demonstração com o modelo de machine learning treinado: preço de revenda previsto,
+      prazo de venda (P50/P90) e ranking por retorno mensal, sobre a base de exemplo.
+    </p>
+
+    <div class="tiles" id="tiles"></div>
+
+    <div class="grade">
+      <div class="cartao">
+        <h2>Top 10 — retorno mensal estimado</h2>
+        <p class="nota">ROI convertido em % ao mês usando o prazo conservador (P90). Passe o mouse para detalhes.</p>
+        <div id="grafico"></div>
+      </div>
+
+      <div class="cartao">
+        <h2>Simulador de arremate</h2>
+        <p class="nota">Calcule qualquer cenário — os +15% de custos extras já entram automaticamente.</p>
+        <div class="form-grade">
+          <div class="campo">
+            <label for="s-lance">Lance (R$)</label>
+            <input id="s-lance" type="number" value="300000" min="0" step="1000">
+          </div>
+          <div class="campo">
+            <label for="s-venda">Preço de venda esperado (R$)</label>
+            <input id="s-venda" type="number" value="450000" min="0" step="1000">
+          </div>
+          <div class="campo">
+            <label for="s-meses">Prazo até vender (meses)</label>
+            <input id="s-meses" type="number" value="4" min="1" max="36" step="0.5">
+          </div>
+          <label class="check"><input id="s-ocupado" type="checkbox"> Imóvel ocupado (soma custo de desocupação)</label>
+        </div>
+        <div class="sim-out" id="sim-out"></div>
+      </div>
+    </div>
+
+    <div class="cartao tabela-cartao">
+      <h2>Ranking completo</h2>
+      <p class="nota">Clique no cabeçalho para ordenar e em uma linha para abrir o detalhamento.</p>
+      <table>
+        <thead><tr id="cabecalho"></tr></thead>
+        <tbody id="corpo"></tbody>
+      </table>
+    </div>
+  </section>
 
   <footer id="rodape"></footer>
 </div>
@@ -213,28 +360,18 @@
 <script src="dados.js"></script>
 <script>
 (function () {
+  "use strict";
   const DADOS = window.DADOS_LEILAO;
   const P = DADOS.premissas;
-  const imoveis = DADOS.imoveis;
 
+  /* ============ utilidades ============ */
+  const $ = id => document.getElementById(id);
   const brl = v => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
   const pct = (v, d = 1) => (v * 100).toLocaleString("pt-BR", { maximumFractionDigits: d }) + "%";
-  const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+  const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+  const chipCls = v => `<span class="chip ${v}">${cap(v)}</span>`;
 
-  /* ---------- KPIs ---------- */
-  const excelentes = imoveis.filter(i => i.classificacao === "excelente");
-  const top10 = imoveis.slice(0, 10);
-  const lucroTop10 = top10.reduce((s, i) => s + i.lucro_liquido, 0);
-  const melhor = imoveis[0];
-  document.getElementById("tiles").innerHTML = [
-    { r: "Imóveis analisados", v: imoveis.length, a: "base: " + DADOS.gerado_com },
-    { r: "Oportunidades excelentes", v: excelentes.length, a: pct(excelentes.length / imoveis.length, 0) + " do lote" },
-    { r: "Lucro líquido do top 10", v: brl(lucroTop10), a: "somando as 10 melhores operações" },
-    { r: "Melhor retorno mensal", v: pct(melhor.retorno_mensal, 2) + " a.m.", a: melhor.id + " · " + melhor.cidade },
-  ].map(t => `<div class="tile"><div class="rotulo">${t.r}</div><div class="valor">${t.v}</div><div class="apoio">${t.a}</div></div>`).join("");
-
-  /* ---------- tooltip ---------- */
-  const dica = document.getElementById("dica");
+  const dica = $("dica");
   function mostrarDica(ev, html) {
     dica.innerHTML = html;
     dica.style.display = "block";
@@ -247,29 +384,360 @@
   }
   const esconderDica = () => { dica.style.display = "none"; };
 
-  /* ---------- gráfico top 10 ---------- */
-  const maxRet = Math.max(...top10.map(i => i.retorno_mensal));
-  document.getElementById("grafico").innerHTML = top10.map((i, ix) => {
+  /* classificação por retorno mensal (mesmos cortes do modelo Python) */
+  function classificar(retMensal) {
+    if (retMensal <= 0) return "evitar";
+    if (retMensal <= 0.01) return "regular";
+    if (retMensal <= 0.025) return "boa";
+    return "excelente";
+  }
+
+  /* custos da operação — regra dos +15% sempre aplicada */
+  function calcularOperacao(lance, venda, meses, ocupado) {
+    const extras = lance * P.custos_extras;
+    const cartorio = lance * P.registro_cartorio;
+    const desocupacao = ocupado ? P.custo_desocupacao : 0;
+    const posse = venda * P.custo_mensal_posse * meses;
+    const investimento = lance + extras + cartorio + P.custo_juridico_fixo + desocupacao + posse;
+    const corretagem = venda * P.corretagem_venda;
+    const lucroBruto = venda - corretagem - investimento;
+    const ir = Math.max(lucroBruto, 0) * P.ir_ganho_capital;
+    const lucro = lucroBruto - ir;
+    const roi = investimento > 0 ? lucro / investimento : 0;
+    const retMensal = Math.pow(1 + Math.max(roi, -0.99), 1 / Math.max(meses, 1)) - 1;
+    return { extras, cartorio, desocupacao, posse, investimento, corretagem, ir, lucro, roi, retMensal };
+  }
+
+  /* ============ navegação entre vistas ============ */
+  const vistas = ["inicio", "planilha", "modelo"];
+  function mostrarVista(nome) {
+    vistas.forEach(v => { $("vista-" + v).hidden = v !== nome; });
+    document.querySelectorAll(".aba").forEach(a => a.classList.toggle("ativa", a.dataset.vista === nome));
+    esconderDica();
+    scrollTo({ top: 0 });
+  }
+  document.querySelectorAll(".aba").forEach(a => a.addEventListener("click", () => mostrarVista(a.dataset.vista)));
+  $("logo").addEventListener("click", () => mostrarVista("inicio"));
+  $("ver-exemplo").addEventListener("click", () => mostrarVista("modelo"));
+
+  /* ============ leitura da planilha (CSV) ============ */
+  const normalizar = s => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9%]+/g, " ").trim();
+
+  function lerNumeroBR(v) {
+    if (typeof v === "number") return v;
+    if (!v) return NaN;
+    let s = String(v).replace(/r\$/i, "").replace(/\s/g, "");
+    if (!s) return NaN;
+    const temPonto = s.includes("."), temVirgula = s.includes(",");
+    if (temPonto && temVirgula) {
+      if (s.lastIndexOf(",") > s.lastIndexOf(".")) s = s.replace(/\./g, "").replace(",", ".");
+      else s = s.replace(/,/g, "");
+    } else if (temVirgula) {
+      s = s.replace(/\./g, "").replace(",", ".");
+    } else if (temPonto) {
+      // "123.456" (milhar BR) vs "123.45" (decimal): 3 dígitos após o último ponto = milhar
+      const depois = s.length - s.lastIndexOf(".") - 1;
+      if (depois === 3 && s.replace(/[^.]/g, "").length >= 1 && s.length > 4) s = s.replace(/\./g, "");
+    }
+    return parseFloat(s);
+  }
+
+  function dividirCSV(texto) {
+    const primeira = texto.slice(0, texto.indexOf("\n") + 1 || texto.length);
+    const sep = (primeira.match(/;/g) || []).length > (primeira.match(/,/g) || []).length ? ";" : ",";
+    const linhas = [];
+    let linha = [], campo = "", aspas = false;
+    for (let i = 0; i < texto.length; i++) {
+      const c = texto[i];
+      if (aspas) {
+        if (c === '"') { if (texto[i + 1] === '"') { campo += '"'; i++; } else aspas = false; }
+        else campo += c;
+      } else if (c === '"') aspas = true;
+      else if (c === sep) { linha.push(campo); campo = ""; }
+      else if (c === "\n" || c === "\r") {
+        if (c === "\r" && texto[i + 1] === "\n") i++;
+        linha.push(campo); campo = "";
+        if (linha.some(x => x.trim() !== "")) linhas.push(linha);
+        linha = [];
+      } else campo += c;
+    }
+    if (campo !== "" || linha.length) { linha.push(campo); if (linha.some(x => x.trim() !== "")) linhas.push(linha); }
+    return linhas;
+  }
+
+  const MAPA_COLUNAS = {
+    avaliacao: ["valor avaliacao", "valor de avaliacao", "avaliacao", "valor avaliado", "valor de mercado"],
+    lance: ["lance minimo", "lance", "preco", "preco minimo", "valor minimo", "lance inicial", "valor do lance", "preco de venda", "valor de venda"],
+    id: ["id", "lote", "n do imovel", "numero do imovel", "no do imovel", "codigo"],
+    cidade: ["cidade", "municipio"],
+    bairro: ["bairro"],
+    tipo: ["tipo", "tipo de imovel", "tipo do imovel"],
+    area: ["area m2", "area", "area total", "area privativa", "area util", "m2", "metragem"],
+    ocupado: ["ocupado", "ocupacao", "situacao", "situacao do imovel"],
+  };
+
+  function acharColunas(cabecalhos) {
+    const norm = cabecalhos.map(normalizar);
+    const achadas = {};
+    for (const [chave, candidatos] of Object.entries(MAPA_COLUNAS)) {
+      for (const cand of candidatos) {
+        // igual exato ou contém o candidato como sequência de palavras inteiras
+        // (evita falsos positivos como "id" dentro de "cidade")
+        const ix = norm.findIndex(h => h === cand || (" " + h + " ").includes(" " + cand + " "));
+        if (ix !== -1) { achadas[chave] = ix; break; }
+      }
+    }
+    return achadas;
+  }
+
+  function analisarPlanilha(texto, nomeArquivo) {
+    const linhas = dividirCSV(texto);
+    if (linhas.length < 2) throw new Error("A planilha precisa de um cabeçalho e ao menos uma linha de dados.");
+    const cols = acharColunas(linhas[0]);
+    if (cols.avaliacao === undefined || cols.lance === undefined) {
+      throw new Error("Não encontrei as colunas obrigatórias de <b>valor de avaliação</b> e <b>lance mínimo/preço</b>. " +
+        "Colunas lidas: " + linhas[0].map(c => `<code>${c}</code>`).join(", ") +
+        ". Renomeie no Excel ou use a planilha modelo.");
+    }
+    const lotes = [];
+    for (let i = 1; i < linhas.length; i++) {
+      const l = linhas[i];
+      const avaliacao = lerNumeroBR(l[cols.avaliacao]);
+      const lance = lerNumeroBR(l[cols.lance]);
+      if (!isFinite(avaliacao) || !isFinite(lance) || avaliacao <= 0 || lance <= 0) continue;
+      const ocupTexto = cols.ocupado !== undefined ? normalizar(String(l[cols.ocupado] || "")) : "";
+      lotes.push({
+        id: cols.id !== undefined && l[cols.id] ? String(l[cols.id]).trim() : "linha " + (i + 1),
+        cidade: cols.cidade !== undefined ? String(l[cols.cidade] || "").trim() : "",
+        bairro: cols.bairro !== undefined ? String(l[cols.bairro] || "").trim() : "",
+        tipo: cols.tipo !== undefined ? String(l[cols.tipo] || "").trim().toLowerCase() : "",
+        area: cols.area !== undefined ? lerNumeroBR(l[cols.area]) : NaN,
+        ocupado: ocupTexto.includes("desocupado") ? 0 : (ocupTexto.includes("ocupado") || ocupTexto === "1" || ocupTexto === "sim" ? 1 : 0),
+        valor_avaliacao: avaliacao,
+        lance_minimo: lance,
+        desconto: 1 - lance / avaliacao,
+      });
+    }
+    if (!lotes.length) throw new Error("Nenhuma linha com avaliação e lance válidos foi encontrada — confira se os valores estão numéricos.");
+    return { nomeArquivo, lotes };
+  }
+
+  /* ============ vista: resultado da planilha ============ */
+  let planilha = null;
+  let plOrdem = { k: "desconto", asc: false };
+
+  function calcularPlanilha() {
+    const meses = Math.max(1, +$("p-meses").value || 1);
+    const pctVenda = (+$("p-pct-venda").value || 100) / 100;
+    return planilha.lotes.map(l => {
+      const venda = l.valor_avaliacao * pctVenda;
+      const op = calcularOperacao(l.lance_minimo, venda, meses, l.ocupado);
+      return { ...l, venda, meses, ...op, classificacao: classificar(op.retMensal) };
+    });
+  }
+
+  const plColunas = [
+    { k: "id", t: "Lote", esq: true, f: v => v },
+    { k: "cidade", t: "Cidade", esq: true, f: v => v || "—" },
+    { k: "tipo", t: "Tipo", esq: true, f: v => v ? cap(v) : "—" },
+    { k: "valor_avaliacao", t: "Avaliação", f: brl },
+    { k: "lance_minimo", t: "Lance mín.", f: brl },
+    { k: "desconto", t: "Desconto", f: v => pct(v, 1) },
+    { k: "investimento", t: "Custo total", f: brl },
+    { k: "venda", t: "Venda estimada", f: brl },
+    { k: "lucro", t: "Lucro líq.", f: v => `<span class="${v >= 0 ? "positivo" : "negativo"}">${brl(v)}</span>` },
+    { k: "roi", t: "ROI", f: v => pct(v, 1) },
+    { k: "classificacao", t: "Classificação", esq: true, f: chipCls },
+  ];
+
+  function desenharPlanilha() {
+    const dados = calcularPlanilha();
+    const porDesconto = [...dados].sort((a, b) => b.desconto - a.desconto);
+
+    /* KPIs */
+    const descMedio = dados.reduce((s, d) => s + d.desconto, 0) / dados.length;
+    const acima40 = dados.filter(d => d.desconto >= 0.4).length;
+    const melhorLucro = [...dados].sort((a, b) => b.lucro - a.lucro)[0];
+    $("pl-tiles").innerHTML = [
+      { r: "Lotes analisados", v: dados.length, a: planilha.nomeArquivo },
+      { r: "Maior desconto", v: pct(porDesconto[0].desconto, 1), a: porDesconto[0].id + (porDesconto[0].cidade ? " · " + porDesconto[0].cidade : "") },
+      { r: "Desconto médio", v: pct(descMedio, 1), a: acima40 + (acima40 === 1 ? " lote" : " lotes") + " com 40%+ de desconto" },
+      { r: "Maior lucro estimado", v: brl(melhorLucro.lucro), a: melhorLucro.id + " · ROI " + pct(melhorLucro.roi, 1) },
+    ].map(t => `<div class="tile"><div class="rotulo">${t.r}</div><div class="valor">${t.v}</div><div class="apoio">${t.a}</div></div>`).join("");
+
+    /* gráfico top 10 por desconto */
+    const top10 = porDesconto.slice(0, 10);
+    const maxDesc = Math.max(...top10.map(d => d.desconto), 0.0001);
+    $("pl-grafico").innerHTML = top10.map((d, ix) => {
+      const w = Math.max(2, d.desconto / maxDesc * 100);
+      const nome = d.id + (d.cidade ? " · " + d.cidade : "");
+      return `<div class="linha-barra" data-ix="${ix}">
+        <div class="nome">${nome}</div>
+        <div class="pista"><div class="barra" style="width:${w * 0.75}%"></div>
+          <div class="barra-valor" style="left:calc(${w * 0.75}% + 8px)">${pct(d.desconto, 1)}</div>
+        </div></div>`;
+    }).join("");
+    $("pl-grafico").onmousemove = ev => {
+      const linha = ev.target.closest(".linha-barra");
+      if (!linha) return esconderDica();
+      const d = top10[+linha.dataset.ix];
+      mostrarDica(ev, `<b>${d.id}${d.tipo ? " — " + cap(d.tipo) : ""}${d.cidade ? ", " + d.cidade : ""}</b>
+        <div class="l"><span>Avaliação</span><span>${brl(d.valor_avaliacao)}</span></div>
+        <div class="l"><span>Lance mínimo</span><span>${brl(d.lance_minimo)}</span></div>
+        <div class="l"><span>Custo total (+15%)</span><span>${brl(d.investimento)}</span></div>
+        <div class="l"><span>Lucro estimado</span><span>${brl(d.lucro)}</span></div>`);
+    };
+    $("pl-grafico").onmouseleave = esconderDica;
+
+    /* melhor oportunidade (maior desconto) */
+    const m = porDesconto[0];
+    $("pl-melhor-nota").textContent = m.id + (m.cidade ? " · " + m.cidade : "") +
+      " — maior desconto da planilha (" + (m.ocupado ? "ocupado" : "sem indicação de ocupação") + ")";
+    $("pl-melhor").innerHTML = `
+      <div class="l"><span>Valor de avaliação</span><span>${brl(m.valor_avaliacao)}</span></div>
+      <div class="l"><span>Lance mínimo</span><span>${brl(m.lance_minimo)} <b>(−${pct(m.desconto, 1)})</b></span></div>
+      <div class="l"><span>Custos extras (+15%)</span><span>${brl(m.extras)}</span></div>
+      <div class="l"><span>Cartório + jurídico${m.ocupado ? " + desocupação" : ""}</span><span>${brl(m.cartorio + P.custo_juridico_fixo + m.desocupacao)}</span></div>
+      <div class="l"><span>Posse por ${m.meses} meses</span><span>${brl(m.posse)}</span></div>
+      <div class="l"><span>Investimento total</span><span>${brl(m.investimento)}</span></div>
+      <div class="l"><span>Venda estimada</span><span>${brl(m.venda)}</span></div>
+      <div class="l"><span>Corretagem + IR</span><span>−${brl(m.corretagem + m.ir)}</span></div>
+      <div class="l destaque"><span>Lucro líquido</span><span class="${m.lucro >= 0 ? "positivo" : "negativo"}">${brl(m.lucro)}</span></div>
+      <div class="l"><span>ROI / retorno mensal</span><span class="${m.lucro >= 0 ? "positivo" : "negativo"}">${pct(m.roi, 1)} · ${pct(m.retMensal, 2)} a.m.</span></div>`;
+
+    /* tabela */
+    $("pl-cabecalho").innerHTML = plColunas.map(c =>
+      `<th class="${c.esq ? "esq" : ""}" data-k="${c.k}">${c.t}
+        <span class="seta">${plOrdem.k === c.k ? (plOrdem.asc ? "▲" : "▼") : ""}</span></th>`).join("");
+    const lista = [...dados].sort((a, b) => {
+      const va = a[plOrdem.k], vb = b[plOrdem.k];
+      const cmp = typeof va === "string" ? String(va).localeCompare(String(vb)) : va - vb;
+      return plOrdem.asc ? cmp : -cmp;
+    });
+    $("pl-corpo").innerHTML = lista.map((d, ix) => `
+      <tr class="linha" tabindex="0" data-ix="${ix}">
+        ${plColunas.map(c => `<td class="${c.esq ? "esq" : ""}">${c.f(d[c.k])}</td>`).join("")}
+      </tr>`).join("");
+    $("pl-corpo").querySelectorAll("tr.linha").forEach(tr => {
+      const abrir = () => alternarDetalhePlanilha(tr, lista[+tr.dataset.ix]);
+      tr.addEventListener("click", abrir);
+      tr.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); abrir(); } });
+    });
+  }
+
+  function alternarDetalhePlanilha(tr, d) {
+    const seguinte = tr.nextElementSibling;
+    document.querySelectorAll("tr.detalhe").forEach(x => x.remove());
+    if (seguinte && seguinte.classList.contains("detalhe")) return;
+    const det = document.createElement("tr");
+    det.className = "detalhe";
+    det.innerHTML = `<td colspan="${plColunas.length}"><div class="det-grade">
+      <div><h3>Lote</h3>
+        ${d.bairro ? `<div class="l"><span>Bairro</span><span>${d.bairro}</span></div>` : ""}
+        ${isFinite(d.area) ? `<div class="l"><span>Área</span><span>${d.area} m²</span></div>` : ""}
+        <div class="l"><span>Situação</span><span>${d.ocupado ? "Ocupado" : "Sem indicação / desocupado"}</span></div>
+        <div class="l"><span>Avaliação</span><span>${brl(d.valor_avaliacao)}</span></div>
+        <div class="l"><span>Lance mínimo</span><span>${brl(d.lance_minimo)}</span></div>
+        <div class="l"><span><b>Desconto</b></span><span><b>${pct(d.desconto, 1)}</b></span></div>
+      </div>
+      <div><h3>Custos da operação</h3>
+        <div class="l"><span>Custos extras (+15%: reforma, ITBI, leiloeiro)</span><span>${brl(d.extras)}</span></div>
+        <div class="l"><span>Cartório (1,5%) + jurídico${d.ocupado ? " + desocupação" : ""}</span><span>${brl(d.cartorio + P.custo_juridico_fixo + d.desocupacao)}</span></div>
+        <div class="l"><span>Posse por ${d.meses} meses</span><span>${brl(d.posse)}</span></div>
+        <div class="l"><span><b>Investimento total</b></span><span><b>${brl(d.investimento)}</b></span></div>
+      </div>
+      <div><h3>Resultado estimado</h3>
+        <div class="l"><span>Venda estimada</span><span>${brl(d.venda)}</span></div>
+        <div class="l"><span>Corretagem (${pct(P.corretagem_venda, 0)})</span><span>−${brl(d.corretagem)}</span></div>
+        <div class="l"><span>IR ganho de capital (${pct(P.ir_ganho_capital, 0)})</span><span>−${brl(d.ir)}</span></div>
+        <div class="l"><span><b>Lucro líquido</b></span><span><b class="${d.lucro >= 0 ? "positivo" : "negativo"}">${brl(d.lucro)}</b></span></div>
+        <div class="l"><span>ROI / retorno mensal</span><span>${pct(d.roi, 1)} · ${pct(d.retMensal, 2)} a.m.</span></div>
+      </div>
+    </div></td>`;
+    tr.after(det);
+  }
+
+  $("pl-cabecalho").addEventListener("click", ev => {
+    const th = ev.target.closest("th");
+    if (!th) return;
+    plOrdem = { k: th.dataset.k, asc: plOrdem.k === th.dataset.k ? !plOrdem.asc : false };
+    desenharPlanilha();
+  });
+  ["p-meses", "p-pct-venda"].forEach(id => $(id).addEventListener("input", () => { if (planilha) desenharPlanilha(); }));
+
+  /* ============ upload ============ */
+  const zona = $("zona"), arquivo = $("arquivo"), erro = $("erro");
+  function processarArquivo(f) {
+    erro.hidden = true;
+    const leitor = new FileReader();
+    leitor.onload = () => {
+      try {
+        planilha = analisarPlanilha(leitor.result, f.name);
+        $("aba-planilha").hidden = false;
+        desenharPlanilha();
+        mostrarVista("planilha");
+      } catch (e) {
+        erro.innerHTML = "⚠️ " + e.message;
+        erro.hidden = false;
+      }
+    };
+    leitor.readAsText(f, "utf-8");
+  }
+  zona.addEventListener("click", () => arquivo.click());
+  zona.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); arquivo.click(); } });
+  arquivo.addEventListener("change", () => { if (arquivo.files[0]) processarArquivo(arquivo.files[0]); arquivo.value = ""; });
+  ["dragenter", "dragover"].forEach(t => zona.addEventListener(t, ev => { ev.preventDefault(); zona.classList.add("arrastando"); }));
+  ["dragleave", "drop"].forEach(t => zona.addEventListener(t, ev => { ev.preventDefault(); zona.classList.remove("arrastando"); }));
+  zona.addEventListener("drop", ev => { const f = ev.dataTransfer.files[0]; if (f) processarArquivo(f); });
+
+  $("baixar-modelo").addEventListener("click", () => {
+    const modelo = "id;cidade;bairro;tipo;area_m2;ocupado;valor_avaliacao;lance_minimo\n" +
+      "L001;Sao Paulo;Centro;apartamento;65;1;450000;280000\n" +
+      "L002;Campinas;Taquaral;casa;120;0;620000;390000\n" +
+      "L003;Curitiba;Agua Verde;apartamento;72;0;380000;210000\n";
+    const blob = new Blob(["﻿" + modelo], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "planilha_modelo_leilao.csv";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
+  /* ============ vista: exemplo do modelo ============ */
+  const imoveis = DADOS.imoveis;
+  const excelentes = imoveis.filter(i => i.classificacao === "excelente");
+  const top10m = imoveis.slice(0, 10);
+  const lucroTop10 = top10m.reduce((s, i) => s + i.lucro_liquido, 0);
+  const melhorM = imoveis[0];
+  $("tiles").innerHTML = [
+    { r: "Imóveis analisados", v: imoveis.length, a: "base: " + DADOS.gerado_com },
+    { r: "Oportunidades excelentes", v: excelentes.length, a: pct(excelentes.length / imoveis.length, 0) + " do lote" },
+    { r: "Lucro líquido do top 10", v: brl(lucroTop10), a: "somando as 10 melhores operações" },
+    { r: "Melhor retorno mensal", v: pct(melhorM.retorno_mensal, 2) + " a.m.", a: melhorM.id + " · " + melhorM.cidade },
+  ].map(t => `<div class="tile"><div class="rotulo">${t.r}</div><div class="valor">${t.v}</div><div class="apoio">${t.a}</div></div>`).join("");
+
+  const maxRet = Math.max(...top10m.map(i => i.retorno_mensal));
+  $("grafico").innerHTML = top10m.map((i, ix) => {
     const w = Math.max(2, i.retorno_mensal / maxRet * 100);
     return `<div class="linha-barra" data-ix="${ix}">
       <div class="nome">${i.id} · ${i.cidade}</div>
-      <div class="pista"><div class="barra" style="width:${w * 0.78}%"></div>
-        <div class="barra-valor" style="left:calc(${w * 0.78}% + 8px)">${pct(i.retorno_mensal, 2)} a.m.</div>
+      <div class="pista"><div class="barra" style="width:${w * 0.75}%"></div>
+        <div class="barra-valor" style="left:calc(${w * 0.75}% + 8px)">${pct(i.retorno_mensal, 2)} a.m.</div>
       </div></div>`;
   }).join("");
-  document.getElementById("grafico").addEventListener("mousemove", ev => {
+  $("grafico").addEventListener("mousemove", ev => {
     const linha = ev.target.closest(".linha-barra");
     if (!linha) return esconderDica();
-    const i = top10[+linha.dataset.ix];
+    const i = top10m[+linha.dataset.ix];
     mostrarDica(ev, `<b>${i.id} — ${cap(i.tipo)}, ${i.cidade}</b>
       <div class="l"><span>Lance mínimo</span><span>${brl(i.lance_minimo)}</span></div>
       <div class="l"><span>Venda prevista</span><span>${brl(i.preco_venda_previsto)}</span></div>
       <div class="l"><span>Lucro líquido</span><span>${brl(i.lucro_liquido)}</span></div>
       <div class="l"><span>Prazo (P50 / P90)</span><span>${i.dias_p50} / ${i.dias_p90} dias</span></div>`);
   });
-  document.getElementById("grafico").addEventListener("mouseleave", esconderDica);
+  $("grafico").addEventListener("mouseleave", esconderDica);
 
-  /* ---------- tabela ---------- */
   const colunas = [
     { k: "id", t: "Lote", esq: true, f: v => v },
     { k: "cidade", t: "Cidade", esq: true, f: v => v },
@@ -283,14 +751,11 @@
     { k: "dias_p50", t: "Dias (P50)", f: v => v },
     { k: "retorno_mensal", t: "Ret. mensal", f: v => pct(v, 2) },
     { k: "score", t: "Score", f: v => v },
-    { k: "classificacao", t: "Classificação", esq: true, f: v => `<span class="chip ${v}">${cap(v)}</span>` },
+    { k: "classificacao", t: "Classificação", esq: true, f: chipCls },
   ];
   let ordem = { k: "retorno_mensal", asc: false };
-  const cabecalho = document.getElementById("cabecalho");
-  const corpo = document.getElementById("corpo");
-
   function desenharCabecalho() {
-    cabecalho.innerHTML = colunas.map(c =>
+    $("cabecalho").innerHTML = colunas.map(c =>
       `<th class="${c.esq ? "esq" : ""}" data-k="${c.k}">${c.t}
         <span class="seta">${ordem.k === c.k ? (ordem.asc ? "▲" : "▼") : ""}</span></th>`).join("");
   }
@@ -300,17 +765,17 @@
       const cmp = typeof va === "string" ? va.localeCompare(vb) : va - vb;
       return ordem.asc ? cmp : -cmp;
     });
-    corpo.innerHTML = lista.map((i, ix) => `
+    $("corpo").innerHTML = lista.map((i, ix) => `
       <tr class="linha" tabindex="0" data-ix="${ix}">
         ${colunas.map(c => `<td class="${c.esq ? "esq" : ""}">${c.f(i[c.k])}</td>`).join("")}
       </tr>`).join("");
-    corpo.querySelectorAll("tr.linha").forEach(tr => {
-      const abrir = () => alternarDetalhe(tr, lista[+tr.dataset.ix]);
+    $("corpo").querySelectorAll("tr.linha").forEach(tr => {
+      const abrir = () => alternarDetalheModelo(tr, lista[+tr.dataset.ix]);
       tr.addEventListener("click", abrir);
       tr.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); abrir(); } });
     });
   }
-  function alternarDetalhe(tr, i) {
+  function alternarDetalheModelo(tr, i) {
     const seguinte = tr.nextElementSibling;
     document.querySelectorAll("tr.detalhe").forEach(d => d.remove());
     if (seguinte && seguinte.classList.contains("detalhe")) return;
@@ -342,56 +807,40 @@
     </div></td>`;
     tr.after(det);
   }
-  cabecalho.addEventListener("click", ev => {
+  $("cabecalho").addEventListener("click", ev => {
     const th = ev.target.closest("th");
     if (!th) return;
-    const k = th.dataset.k;
-    ordem = { k, asc: ordem.k === k ? !ordem.asc : false };
+    ordem = { k: th.dataset.k, asc: ordem.k === th.dataset.k ? !ordem.asc : false };
     desenharCabecalho(); desenharCorpo();
   });
   desenharCabecalho(); desenharCorpo();
 
-  /* ---------- simulador ---------- */
-  const $ = id => document.getElementById(id);
+  /* ============ simulador ============ */
   function simular() {
     const lance = +$("s-lance").value || 0;
     const venda = +$("s-venda").value || 0;
     const meses = Math.max(1, +$("s-meses").value || 1);
-    const ocupado = $("s-ocupado").checked;
-
-    const extras = lance * P.custos_extras;
-    const cartorio = lance * P.registro_cartorio;
-    const desocupacao = ocupado ? P.custo_desocupacao : 0;
-    const posse = venda * P.custo_mensal_posse * meses;
-    const investimento = lance + extras + cartorio + P.custo_juridico_fixo + desocupacao + posse;
-    const corretagem = venda * P.corretagem_venda;
-    const lucroBruto = venda - corretagem - investimento;
-    const ir = Math.max(lucroBruto, 0) * P.ir_ganho_capital;
-    const lucro = lucroBruto - ir;
-    const roi = investimento > 0 ? lucro / investimento : 0;
-    const retMensal = Math.pow(1 + Math.max(roi, -0.99), 1 / meses) - 1;
-
-    const cls = lucro >= 0 ? "positivo" : "negativo";
+    const op = calcularOperacao(lance, venda, meses, $("s-ocupado").checked);
+    const cls = op.lucro >= 0 ? "positivo" : "negativo";
     $("sim-out").innerHTML = `
-      <div class="l"><span>Custos extras (+15%: reforma, ITBI, leiloeiro)</span><span>${brl(extras)}</span></div>
-      <div class="l"><span>Cartório + jurídico${ocupado ? " + desocupação" : ""}</span><span>${brl(cartorio + P.custo_juridico_fixo + desocupacao)}</span></div>
-      <div class="l"><span>Posse por ${meses} ${meses === 1 ? "mês" : "meses"}</span><span>${brl(posse)}</span></div>
-      <div class="l"><span>Investimento total</span><span>${brl(investimento)}</span></div>
-      <div class="l"><span>Corretagem + IR na venda</span><span>${brl(corretagem + ir)}</span></div>
-      <div class="l destaque"><span>Lucro líquido</span><span class="${cls}">${brl(lucro)}</span></div>
-      <div class="l"><span>ROI</span><span class="${cls}">${pct(roi, 1)}</span></div>
-      <div class="l"><span>Retorno mensal</span><span class="${cls}">${pct(retMensal, 2)} a.m.</span></div>`;
+      <div class="l"><span>Custos extras (+15%: reforma, ITBI, leiloeiro)</span><span>${brl(op.extras)}</span></div>
+      <div class="l"><span>Cartório + jurídico${op.desocupacao ? " + desocupação" : ""}</span><span>${brl(op.cartorio + P.custo_juridico_fixo + op.desocupacao)}</span></div>
+      <div class="l"><span>Posse por ${meses} ${meses === 1 ? "mês" : "meses"}</span><span>${brl(op.posse)}</span></div>
+      <div class="l"><span>Investimento total</span><span>${brl(op.investimento)}</span></div>
+      <div class="l"><span>Corretagem + IR na venda</span><span>${brl(op.corretagem + op.ir)}</span></div>
+      <div class="l destaque"><span>Lucro líquido</span><span class="${cls}">${brl(op.lucro)}</span></div>
+      <div class="l"><span>ROI</span><span class="${cls}">${pct(op.roi, 1)}</span></div>
+      <div class="l"><span>Retorno mensal</span><span class="${cls}">${pct(op.retMensal, 2)} a.m.</span></div>`;
   }
   ["s-lance", "s-venda", "s-meses", "s-ocupado"].forEach(id => $(id).addEventListener("input", simular));
   simular();
 
-  /* ---------- rodapé ---------- */
-  document.getElementById("rodape").textContent =
-    "Ferramenta de apoio à decisão — não é recomendação de investimento. Previsões geradas por " +
-    "modelo treinado com dados de demonstração; premissas de custo: +" + (P.custos_extras * 100) +
-    "% sobre o lance (reforma, ITBI e leiloeiro), cartório " + (P.registro_cartorio * 100) +
-    "%, corretagem " + (P.corretagem_venda * 100) + "%, IR " + (P.ir_ganho_capital * 100) +
-    "% sobre o lucro. Sempre faça due diligence jurídica antes de dar um lance.";
+  /* ============ rodapé ============ */
+  $("rodape").textContent =
+    "Ferramenta de apoio à decisão — não é recomendação de investimento. Premissas de custo: +" +
+    (P.custos_extras * 100) + "% sobre o lance (possível reforma, ITBI e leiloeiro), cartório " +
+    (P.registro_cartorio * 100) + "%, corretagem " + (P.corretagem_venda * 100) + "%, IR " +
+    (P.ir_ganho_capital * 100) + "% sobre o lucro. Sempre faça due diligence jurídica antes de dar um lance.";
 })();
 </script>
 </body>
