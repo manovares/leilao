@@ -219,7 +219,8 @@
     <span class="regra15">custos sempre com +15% sobre o lance: possível reforma + ITBI + leiloeiro</span>
     <nav class="abas" aria-label="Seções">
       <button class="aba ativa" data-vista="inicio">Início</button>
-      <button class="aba" data-vista="planilha" id="aba-planilha" hidden>Minha planilha</button>
+      <button class="aba" data-vista="arrematador" id="aba-arrematador" hidden>Planilha Arrematador</button>
+      <button class="aba" data-vista="caixa" id="aba-caixa" hidden>Lista Caixa</button>
       <button class="aba" data-vista="modelo">Exemplo do modelo</button>
     </nav>
   </header>
@@ -235,7 +236,7 @@
     <div class="zona" id="zona" tabindex="0" role="button" aria-label="Enviar planilha CSV">
       <div class="icone">📄</div>
       <div class="principal">Arraste sua planilha aqui ou clique para escolher</div>
-      <div class="apoio">Aceita a <b>Lista de Imóveis da Caixa</b> (CSV baixado de venda-imoveis.caixa.gov.br) exatamente como ela vem, ou qualquer .csv com avaliação e lance. Valores como "R$ 123.456,78" são aceitos.</div>
+      <div class="apoio">Aceita a <b>Lista da Caixa</b> (venda-imoveis.caixa.gov.br) e a <b>planilha do Arrematador</b> — cada uma abre na sua própria aba. Do Excel: Salvar como → CSV. Valores como "R$ 123.456,78" são aceitos.</div>
       <input type="file" id="arquivo" accept=".csv,text/csv">
     </div>
     <div id="erro" class="erro" hidden></div>
@@ -248,7 +249,7 @@
     <div class="passos">
       <div class="passo"><span class="num">1</span>
         <h3>Envie a planilha</h3>
-        <p>A lista da Caixa funciona direto — tipo, área, quartos e link do anúncio são extraídos automaticamente. De outra origem, basta ter valor de avaliação e lance mínimo.</p>
+        <p>O formato é detectado sozinho: planilha do <b>Arrematador</b> (valor de venda, FGTS, data do leilão) abre na aba própria; a <b>lista da Caixa</b> ou qualquer CSV com avaliação e lance abre na aba Lista Caixa.</p>
       </div>
       <div class="passo"><span class="num">2</span>
         <h3>O sistema analisa</h3>
@@ -297,7 +298,7 @@
     </div>
 
     <div class="cartao tabela-cartao">
-      <h2>Ranking da sua planilha</h2>
+      <h2 id="pl-titulo">Ranking da sua planilha</h2>
       <p class="nota" id="pl-tabela-nota">Ordenado pelos maiores descontos. Clique no cabeçalho para reordenar e em uma linha para o detalhamento de custos.</p>
       <table>
         <thead><tr id="pl-cabecalho"></tr></thead>
@@ -372,6 +373,9 @@
   const brl = v => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
   const pct = (v, d = 1) => (v * 100).toLocaleString("pt-BR", { maximumFractionDigits: d }) + "%";
   const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+  const MINUSCULAS = new Set(["de", "do", "da", "dos", "das", "e", "d"]);
+  const titulo = s => String(s).toLowerCase().split(" ").map((p, i) =>
+    (i > 0 && MINUSCULAS.has(p)) ? p : cap(p)).join(" ");
   const chipCls = v => `<span class="chip ${v}">${cap(v)}</span>`;
 
   const dica = $("dica");
@@ -412,10 +416,16 @@
   }
 
   /* ============ navegação entre vistas ============ */
+  /* duas abas de resultado compartilham a mesma seção, cada uma com seus dados */
   const vistas = ["inicio", "planilha", "modelo"];
+  const slots = { arrematador: null, caixa: null };
+  const ROTULO_SLOT = { arrematador: "Planilha Arrematador", caixa: "Lista Caixa (padrão)" };
+  let slotAtivo = null;
   function mostrarVista(nome) {
-    vistas.forEach(v => { $("vista-" + v).hidden = v !== nome; });
+    const secao = nome in slots ? "planilha" : nome;
+    vistas.forEach(v => { $("vista-" + v).hidden = v !== secao; });
     document.querySelectorAll(".aba").forEach(a => a.classList.toggle("ativa", a.dataset.vista === nome));
+    if (secao === "planilha") { slotAtivo = nome; desenharPlanilha(); }
     esconderDica();
     scrollTo({ top: 0 });
   }
@@ -430,7 +440,7 @@
   function lerNumeroBR(v) {
     if (typeof v === "number") return v;
     if (!v) return NaN;
-    let s = String(v).replace(/r\$/i, "").replace(/\s/g, "");
+    let s = String(v).replace(/[^\d.,\-]/g, "");
     if (!s) return NaN;
     const temPonto = s.includes("."), temVirgula = s.includes(",");
     if (temPonto && temVirgula) {
@@ -480,15 +490,17 @@
     ocupado: ["ocupado", "ocupacao", "situacao", "situacao do imovel"],
     descricao: ["descricao"],
     financiamento: ["financiamento", "aceita financiamento"],
+    fgts: ["aceita fgts", "fgts"],
     modalidade: ["modalidade de venda", "modalidade"],
+    data_leilao: ["data leilao", "data do leilao", "data"],
     link: ["link de acesso", "link", "url"],
     endereco: ["endereco"],
     uf: ["uf", "estado"],
   };
 
-  /* tipo, área, quartos e vagas escondidos na "Descrição" da lista da Caixa */
+  /* tipo, área, quartos e vagas escondidos na "Descrição" (Caixa e Arrematador) */
   function extrairDescricao(txt) {
-    const n = semAcento(txt);
+    const n = semAcento(txt).replace(/²/g, "2");
     const num = re => { const m = n.match(re); return m ? parseFloat(m[1].replace(",", ".")) : NaN; };
     const tipo = (n.split(",")[0] || "").trim();
     const priv = num(/([\d.,]+) de area privativa/);
@@ -496,7 +508,19 @@
     const terreno = num(/([\d.,]+) de area do terreno/);
     let area = priv > 0 ? priv : (total > 0 ? total : NaN);
     if (!(area > 0) && tipo.includes("terreno")) area = terreno > 0 ? terreno : NaN;
-    return { tipo, area, quartos: num(/(\d+) qto/), vagas: num(/(\d+) vaga/) };
+    if (!(area > 0)) area = num(/([\d.,]+)\s*m2/);
+    return {
+      tipo, area: area > 0 ? area : NaN,
+      quartos: num(/(\d+)\s*(?:qto|quarto)/),
+      vagas: num(/(\d+)\s*vaga/),
+    };
+  }
+
+  /* "02/08/2026 01:35" -> timestamp para ordenar */
+  function lerDataBR(s) {
+    const m = String(s).match(/(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2}))?/);
+    if (!m) return NaN;
+    return new Date(+m[3], +m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0)).getTime();
   }
 
   /* pula banner/linhas soltas antes do cabeçalho (ex.: lista da Caixa) */
@@ -554,9 +578,10 @@
         : (ocupTexto.includes("ocupado") || ocupTexto === "1" || ocupTexto === "sim" ? 1 : 0);
 
       const areaCol = cols.area !== undefined ? lerNumeroBR(l[cols.area]) : NaN;
+      const dataLeilao = pega(l, "data_leilao");
       lotes.push({
         id: pega(l, "id") || "linha " + (i + 1),
-        cidade: cap(pega(l, "cidade").toLowerCase()) || "",
+        cidade: pega(l, "cidade") ? titulo(pega(l, "cidade")) : "",
         uf: pega(l, "uf"),
         bairro: pega(l, "bairro"),
         endereco: pega(l, "endereco"),
@@ -565,7 +590,10 @@
         quartos: daDesc.quartos,
         vagas: daDesc.vagas,
         financiamento: normalizar(pega(l, "financiamento")) === "sim" ? 1 : 0,
+        fgts: normalizar(pega(l, "fgts")) === "sim" ? 1 : 0,
         modalidade: pega(l, "modalidade"),
+        data_leilao: dataLeilao,
+        data_leilao_ts: lerDataBR(dataLeilao),
         link: /^https?:\/\//.test(pega(l, "link")) ? pega(l, "link") : "",
         ocupado, ocupacaoAssumida: semColunaOcupacao,
         valor_avaliacao: avaliacao,
@@ -574,14 +602,20 @@
       });
     }
     if (!lotes.length) throw new Error("Nenhuma linha com avaliação e lance válidos foi encontrada — confira se os valores estão numéricos.");
-    return { nomeArquivo, lotes };
+    // formato Arrematador: tem "Valor de venda" + FGTS/data do leilão
+    const cabNorm = linhas[0].map(normalizar).join(" | ");
+    const formato = (cols.fgts !== undefined || cols.data_leilao !== undefined) &&
+      cabNorm.includes("valor de venda") ? "arrematador" : "caixa";
+    return { nomeArquivo, lotes, formato };
   }
 
   /* ============ vista: resultado da planilha ============ */
-  let planilha = null;
-  let plOrdem = { k: "desconto", asc: false };
+  const plOrdens = {
+    arrematador: { k: "desconto", asc: false },
+    caixa: { k: "desconto", asc: false },
+  };
 
-  function calcularPlanilha() {
+  function calcularPlanilha(planilha) {
     const meses = Math.max(1, +$("p-meses").value || 1);
     const pctVenda = (+$("p-pct-venda").value || 100) / 100;
     return planilha.lotes.map(l => {
@@ -591,34 +625,51 @@
     });
   }
 
-  const plColunas = [
-    { k: "id", t: "Lote", esq: true, f: v => v },
-    { k: "cidade", t: "Cidade", esq: true, f: v => v || "—" },
-    { k: "tipo", t: "Tipo", esq: true, f: v => v ? cap(v) : "—" },
-    { k: "valor_avaliacao", t: "Avaliação", f: brl },
-    { k: "lance_minimo", t: "Lance mín.", f: brl },
-    { k: "desconto", t: "Desconto", f: v => pct(v, 1) },
-    { k: "investimento", t: "Custo total", f: brl },
-    { k: "venda", t: "Venda estimada", f: brl },
-    { k: "lucro", t: "Lucro líq.", f: v => `<span class="${v >= 0 ? "positivo" : "negativo"}">${brl(v)}</span>` },
-    { k: "roi", t: "ROI", f: v => pct(v, 1) },
-    { k: "classificacao", t: "Classificação", esq: true, f: chipCls },
-    { k: "link", t: "Anúncio", esq: true, f: v => v ? `<a href="${v}" target="_blank" rel="noopener">abrir ↗</a>` : "—" },
-  ];
+  function montarColunas(dados) {
+    const cols = [
+      { k: "id", t: "Lote", esq: true, f: v => v },
+      { k: "cidade", t: "Cidade", esq: true, f: v => v || "—" },
+      { k: "tipo", t: "Tipo", esq: true, f: v => v ? cap(v) : "—" },
+      { k: "valor_avaliacao", t: "Avaliação", f: brl },
+      { k: "lance_minimo", t: "Lance mín.", f: brl },
+      { k: "desconto", t: "Desconto", f: v => pct(v, 1) },
+      { k: "investimento", t: "Custo total", f: brl },
+      { k: "venda", t: "Venda estimada", f: brl },
+      { k: "lucro", t: "Lucro líq.", f: v => `<span class="${v >= 0 ? "positivo" : "negativo"}">${brl(v)}</span>` },
+      { k: "roi", t: "ROI", f: v => pct(v, 1) },
+      { k: "classificacao", t: "Classificação", esq: true, f: chipCls },
+    ];
+    if (dados.some(d => isFinite(d.data_leilao_ts))) {
+      cols.push({ k: "data_leilao_ts", t: "Leilão em", f: ts => isFinite(ts)
+        ? new Date(ts).toLocaleDateString("pt-BR") : "—" });
+    }
+    cols.push({ k: "link", t: "Anúncio", esq: true, f: v => v ? `<a href="${v}" target="_blank" rel="noopener">abrir ↗</a>` : "—" });
+    return cols;
+  }
+  let plColunas = [];
   const MAX_LINHAS = 300;
 
   function desenharPlanilha() {
-    const dados = calcularPlanilha();
+    const planilha = slots[slotAtivo];
+    if (!planilha) return;
+    const plOrdem = plOrdens[slotAtivo];
+    const dados = calcularPlanilha(planilha);
+    plColunas = montarColunas(dados);
+    if (!plColunas.some(c => c.k === plOrdem.k)) plOrdem.k = "desconto";
+    $("pl-titulo").textContent = "Ranking — " + ROTULO_SLOT[slotAtivo];
     const porDesconto = [...dados].sort((a, b) => b.desconto - a.desconto);
 
-    /* KPIs */
-    const descMedio = dados.reduce((s, d) => s + d.desconto, 0) / dados.length;
+    /* KPIs — o desconto médio só considera lotes com desconto real
+       (no 2º leilão o valor de venda pode superar a avaliação) */
+    const comDesconto = dados.filter(d => d.desconto > 0);
+    const descMedio = comDesconto.length
+      ? comDesconto.reduce((s, d) => s + d.desconto, 0) / comDesconto.length : 0;
     const acima40 = dados.filter(d => d.desconto >= 0.4).length;
     const melhorLucro = [...dados].sort((a, b) => b.lucro - a.lucro)[0];
     $("pl-tiles").innerHTML = [
       { r: "Lotes analisados", v: dados.length, a: planilha.nomeArquivo },
       { r: "Maior desconto", v: pct(porDesconto[0].desconto, 1), a: porDesconto[0].id + (porDesconto[0].cidade ? " · " + porDesconto[0].cidade : "") },
-      { r: "Desconto médio", v: pct(descMedio, 1), a: acima40 + (acima40 === 1 ? " lote" : " lotes") + " com 40%+ de desconto" },
+      { r: "Desconto médio (com desconto)", v: pct(descMedio, 1), a: comDesconto.length + " de " + dados.length + " lotes têm desconto; " + acima40 + " com 40%+" },
       { r: "Maior lucro estimado", v: brl(melhorLucro.lucro), a: melhorLucro.id + " · ROI " + pct(melhorLucro.roi, 1) },
     ].map(t => `<div class="tile"><div class="rotulo">${t.r}</div><div class="valor">${t.v}</div><div class="apoio">${t.a}</div></div>`).join("");
 
@@ -698,7 +749,8 @@
         ${isFinite(d.area) ? `<div class="l"><span>Área</span><span>${d.area} m²</span></div>` : ""}
         ${isFinite(d.quartos) && d.quartos > 0 ? `<div class="l"><span>Quartos / vagas</span><span>${d.quartos} / ${isFinite(d.vagas) ? d.vagas : 0}</span></div>` : ""}
         ${d.modalidade ? `<div class="l"><span>Modalidade</span><span>${d.modalidade}</span></div>` : ""}
-        <div class="l"><span>Financiamento</span><span>${d.financiamento ? "Aceita" : "Não aceita"}</span></div>
+        ${d.data_leilao ? `<div class="l"><span>Data do leilão</span><span>${d.data_leilao}</span></div>` : ""}
+        <div class="l"><span>Financiamento${slotAtivo === "arrematador" ? " / FGTS" : ""}</span><span>${d.financiamento ? "Aceita" : "Não aceita"}${slotAtivo === "arrematador" ? (d.fgts ? " / FGTS sim" : " / FGTS não") : ""}</span></div>
         <div class="l"><span>Situação</span><span>${d.ocupacaoAssumida ? "Sem indicação — assumido ocupado" : (d.ocupado ? "Ocupado" : "Desocupado")}</span></div>
         <div class="l"><span>Avaliação</span><span>${brl(d.valor_avaliacao)}</span></div>
         <div class="l"><span>Lance mínimo</span><span>${brl(d.lance_minimo)}</span></div>
@@ -724,11 +776,12 @@
 
   $("pl-cabecalho").addEventListener("click", ev => {
     const th = ev.target.closest("th");
-    if (!th) return;
-    plOrdem = { k: th.dataset.k, asc: plOrdem.k === th.dataset.k ? !plOrdem.asc : false };
+    if (!th || !slotAtivo) return;
+    const atual = plOrdens[slotAtivo];
+    plOrdens[slotAtivo] = { k: th.dataset.k, asc: atual.k === th.dataset.k ? !atual.asc : false };
     desenharPlanilha();
   });
-  ["p-meses", "p-pct-venda"].forEach(id => $(id).addEventListener("input", () => { if (planilha) desenharPlanilha(); }));
+  ["p-meses", "p-pct-venda"].forEach(id => $(id).addEventListener("input", () => { if (slotAtivo && slots[slotAtivo]) desenharPlanilha(); }));
 
   /* ============ upload ============ */
   const zona = $("zona"), arquivo = $("arquivo"), erro = $("erro");
@@ -740,10 +793,10 @@
         // detecta a codificação: a lista da Caixa vem em ISO-8859-1
         let texto = new TextDecoder("utf-8").decode(leitor.result);
         if (texto.includes("\uFFFD")) texto = new TextDecoder("windows-1252").decode(leitor.result);
-        planilha = analisarPlanilha(texto, f.name);
-        $("aba-planilha").hidden = false;
-        desenharPlanilha();
-        mostrarVista("planilha");
+        const resultado = analisarPlanilha(texto, f.name);
+        slots[resultado.formato] = resultado;
+        $("aba-" + resultado.formato).hidden = false;
+        mostrarVista(resultado.formato);
       } catch (e) {
         erro.innerHTML = "⚠️ " + e.message;
         erro.hidden = false;

@@ -64,14 +64,18 @@ def carregar_csv(caminho: str, treino: bool = False) -> pd.DataFrame:
 def carregar_qualquer(caminho: str, treino: bool = False) -> pd.DataFrame:
     """Carrega um CSV no esquema do pipeline OU a lista oficial da Caixa,
     detectando o formato automaticamente."""
+    from .arrematador import carregar_arrematador, eh_planilha_arrematador
     from .caixa import carregar_caixa, eh_planilha_caixa
 
-    if eh_planilha_caixa(caminho):
+    if eh_planilha_arrematador(caminho) or eh_planilha_caixa(caminho):
         if treino:
             raise ValueError(
-                "A lista da Caixa não tem resultado de operações passadas "
-                "(preco_venda_real / dias_ate_venda) e não serve para treino."
+                "Listas de leilão (Caixa/Arrematador) não têm resultado de "
+                "operações passadas (preco_venda_real / dias_ate_venda) "
+                "e não servem para treino."
             )
+        if eh_planilha_arrematador(caminho):
+            return carregar_arrematador(caminho)
         return carregar_caixa(caminho)
     return carregar_csv(caminho, treino=treino)
 

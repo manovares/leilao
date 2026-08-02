@@ -34,6 +34,10 @@ python exportar_frontend.py --dados data/Lista_imoveis_SP.csv --top 1000
 
 Como a lista não informa ocupação, o custo de desocupação é incluído por padrão (conservador).
 
+### Planilha do Arrematador
+
+A planilha exportada do Arrematador (colunas `ID IMOVEL`, `MODALIDADE`, `TIPO IMOVEL`, `ESTADO`, `CIDADE`, `VALOR AVALIAÇÃO`, `VALOR DE VENDA`, `ACEITA FINANCIAMENTO`, `ACEITA FGTS`, `DESCRICAO`, `DATA LEILÃO`, `LINK`) também é detectada automaticamente — salve como CSV e use nos scripts ou no upload do site. No front-end, cada formato abre na sua própria aba ("Planilha Arrematador" / "Lista Caixa"), e as duas podem ficar carregadas ao mesmo tempo.
+
 ### Outros formatos (`analisar.py --dados seu_edital.csv`)
 
 CSV com as colunas:
