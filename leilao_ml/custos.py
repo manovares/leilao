@@ -19,7 +19,15 @@ def calcular_operacao(df: pd.DataFrame, preco_venda: np.ndarray,
     lance = df["lance_minimo"].to_numpy(float)
     ocupado = df["ocupado"].to_numpy(int)
 
-    custo_extras = lance * cfg.custos_extras
+    # Venda Online / Venda Direta não têm leiloeiro: desconta a comissão dos extras
+    extras_pct = np.full(len(df), cfg.custos_extras)
+    if "modalidade" in df.columns:
+        mod = df["modalidade"].astype(str).str.lower()
+        sem_leiloeiro = mod.str.contains("venda online") | mod.str.contains("venda direta")
+        extras_pct = np.where(
+            sem_leiloeiro, cfg.custos_extras - cfg.comissao_leiloeiro, cfg.custos_extras
+        )
+    custo_extras = lance * extras_pct
     custo_aquisicao = (
         lance * (1 + cfg.registro_cartorio)
         + custo_extras

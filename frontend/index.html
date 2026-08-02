@@ -162,11 +162,11 @@
   .form-grade { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
   .campo { display: flex; flex-direction: column; gap: 3px; }
   .campo label { font-size: 0.78rem; color: var(--ink-2); }
-  .campo input[type="number"] {
+  .campo input[type="number"], .campo select {
     background: var(--page); color: var(--ink); border: 1px solid var(--baseline);
     border-radius: 6px; padding: 7px 9px; font: inherit; width: 100%;
   }
-  .campo input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .campo input:focus, .campo select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
   .check { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--ink-2); }
   .sim-out { margin-top: 14px; border-top: 1px solid var(--grid); padding-top: 10px; }
   .sim-out .l { display: flex; justify-content: space-between; padding: 3px 0; font-size: 0.86rem; color: var(--ink-2); }
@@ -281,11 +281,21 @@
         <input id="p-meses" type="number" value="4" min="1" max="36" step="0.5">
       </div>
       <div class="campo">
-        <label for="p-pct-venda">Preço de venda (% do valor de avaliação)</label>
+        <label for="p-pct-venda">Preço de venda (% do valor de mercado)</label>
         <input id="p-pct-venda" type="number" value="100" min="30" max="200" step="5">
       </div>
+      <div class="campo">
+        <label for="p-tipo">Tipo de imóvel</label>
+        <select id="p-tipo">
+          <option value="">Todos</option>
+          <option value="apartamento">Apartamentos</option>
+          <option value="casa">Casas</option>
+          <option value="terreno">Terrenos</option>
+          <option value="comercial">Comercial</option>
+        </select>
+      </div>
       <label class="check" style="grid-column:auto; align-self:center"><input id="p-zl" type="checkbox"> Somente Zona Leste (SP)</label>
-      <div class="info">O lucro usa estas premissas + os custos fixos (+15% sobre o lance, cartório 1,5%, jurídico, desocupação se ocupado, corretagem 6%, IR 15%).</div>
+      <div class="info">Venda estimada usa o preço de mercado por m² da região (tabela editável no código) quando há área; senão a avaliação. Custos: +15% sobre o lance (+10% em Venda Online/Direta, que não tem leiloeiro), cartório 1,5%, jurídico, desocupação se ocupado, corretagem 6%, IR 15%.</div>
     </div>
 
     <div class="tiles" id="pl-tiles"></div>
@@ -353,6 +363,7 @@
             <input id="s-meses" type="number" value="4" min="1" max="36" step="0.5">
           </div>
           <label class="check"><input id="s-ocupado" type="checkbox"> Imóvel ocupado (soma custo de desocupação)</label>
+          <label class="check"><input id="s-direta" type="checkbox"> Venda Online/Direta (sem comissão de leiloeiro: +10% em vez de +15%)</label>
         </div>
         <div class="sim-out" id="sim-out"></div>
       </div>
@@ -413,9 +424,11 @@
     return "excelente";
   }
 
-  /* custos da operação — regra dos +15% sempre aplicada */
-  function calcularOperacao(lance, venda, meses, ocupado) {
-    const extras = lance * P.custos_extras;
+  /* custos da operação — +15% sobre o lance; em Venda Online/Direta não há
+     leiloeiro, então a comissão (5%) sai dos extras */
+  function calcularOperacao(lance, venda, meses, ocupado, semLeiloeiro) {
+    const extrasPct = P.custos_extras - (semLeiloeiro ? (P.comissao_leiloeiro || 0.05) : 0);
+    const extras = lance * extrasPct;
     const cartorio = lance * P.registro_cartorio;
     const desocupacao = ocupado ? P.custo_desocupacao : 0;
     const posse = venda * P.custo_mensal_posse * meses;
@@ -426,7 +439,7 @@
     const lucro = lucroBruto - ir;
     const roi = investimento > 0 ? lucro / investimento : 0;
     const retMensal = Math.pow(1 + Math.max(roi, -0.99), 1 / Math.max(meses, 1)) - 1;
-    return { extras, cartorio, desocupacao, posse, investimento, corretagem, ir, lucro, roi, retMensal };
+    return { extras, extrasPct, cartorio, desocupacao, posse, investimento, corretagem, ir, lucro, roi, retMensal };
   }
 
   /* ============ navegação entre vistas ============ */
@@ -541,10 +554,52 @@
     "teotonio vilela", "vila antonieta", "vila curuca", "vila esperanca",
     "vila formosa", "vila jacui", "vila matilde", "vila prudente", "vila re"];
 
-  function ehZonaLeste(cidade, bairro, endereco) {
-    if (!normalizar(cidade).includes("sao paulo")) return false;
+  function distritoZL(cidade, bairro, endereco) {
+    if (!normalizar(cidade).includes("sao paulo")) return "";
     const texto = " " + normalizar((bairro || "") + " | " + (endereco || "")) + " ";
-    return DISTRITOS_ZL.some(d => texto.includes(" " + d + " "));
+    return DISTRITOS_ZL.find(d => texto.includes(" " + d + " ")) || "";
+  }
+
+  /* tipos variados ("prédio", "galpão", "sobrado"...) -> 4 tipos padrão */
+  const MAPA_TIPO = { predio: "comercial", galpao: "comercial", sala: "comercial",
+    loja: "comercial", sobrado: "casa", gleba: "terreno", "gleba urbana": "terreno",
+    "imovel rural": "terreno" };
+  function tipoPadrao(t) {
+    const n = normalizar(t || "");
+    if (MAPA_TIPO[n]) return MAPA_TIPO[n];
+    for (const p of ["apartamento", "casa", "terreno", "comercial"]) if (n.includes(p)) return p;
+    return n ? "outros" : "";
+  }
+
+  /* preço de mercado de referência (R$/m² de venda) — EDITE AQUI para a
+     sua realidade; usado no lugar da avaliação da Caixa quando há área */
+  const PRECO_M2_ZL = { "tatuape": 9500, "analia franco": 9500, "mooca": 9000,
+    "belem": 8800, "agua rasa": 8500, "vila prudente": 8000, "carrao": 7800,
+    "vila formosa": 7500, "vila matilde": 7200, "sao lucas": 7000, "penha": 7000,
+    "aricanduva": 6500, "vila esperanca": 6500, "cangaiba": 6000, "ponte rasa": 6000,
+    "vila antonieta": 6000, "vila re": 6000, "burgo paulista": 5800, "sapopemba": 5800,
+    "cidade lider": 5800, "itaquera": 5800, "artur alvim": 5600, "ermelino matarazzo": 5500,
+    "jose bonifacio": 5500, "parque do carmo": 5500, "sao mateus": 5500,
+    "teotonio vilela": 5500, "cidade a e carvalho": 5500, "a e carvalho": 5500,
+    "sao miguel": 5200, "sao rafael": 5200, "vila jacui": 5000, "iguatemi": 5000,
+    "itaim paulista": 4900, "vila curuca": 4800, "jardim helena": 4800,
+    "guaianases": 4800, "guaianazes": 4800, "lajeado": 4600, "cidade tiradentes": 4300 };
+  const PRECO_M2_CIDADE = { "sao paulo": 10500, "campinas": 7500, "ribeirao preto": 6500,
+    "sorocaba": 6000, "sao jose dos campos": 8000, "sao jose do rio preto": 6000,
+    "jundiai": 7500, "piracicaba": 5500, "santos": 9500, "guarulhos": 6500,
+    "osasco": 7000, "santo andre": 7500, "sao bernardo do campo": 7500, "maua": 5500,
+    "diadema": 6000, "marilia": 4500, "bauru": 5000, "aracatuba": 4500,
+    "presidente prudente": 4500, "birigui": 3800, "itupeva": 5500, "pelotas": 4500,
+    "rio de janeiro": 9000, "belo horizonte": 7500, "curitiba": 7500,
+    "porto alegre": 7000, "salvador": 5500, "goiania": 5500 };
+  const FATOR_TIPO_M2 = { apartamento: 1.0, casa: 0.9 };
+
+  function estimarMercado(l) {
+    const fator = FATOR_TIPO_M2[l.tipo_padrao];
+    if (!fator || !(l.area > 0)) return NaN;
+    const pm2 = (l.distrito_zl && PRECO_M2_ZL[l.distrito_zl]) ||
+      PRECO_M2_CIDADE[normalizar(l.cidade)] || NaN;
+    return pm2 ? l.area * pm2 * fator : NaN;
   }
 
   /* "02/08/2026 01:35" -> timestamp para ordenar */
@@ -627,7 +682,9 @@
         data_leilao_ts: lerDataBR(dataLeilao),
         link: /^https?:\/\//.test(pega(l, "link")) ? pega(l, "link") : "",
         ocupado, ocupacaoAssumida: semColunaOcupacao,
-        zona_leste: ehZonaLeste(pega(l, "cidade"), pega(l, "bairro"), pega(l, "endereco")),
+        distrito_zl: distritoZL(pega(l, "cidade"), pega(l, "bairro"), pega(l, "endereco")),
+        zona_leste: !!distritoZL(pega(l, "cidade"), pega(l, "bairro"), pega(l, "endereco")),
+        tipo_padrao: tipoPadrao(pega(l, "tipo") || daDesc.tipo),
         valor_avaliacao: avaliacao,
         lance_minimo: lance,
         desconto: 1 - lance / avaliacao,
@@ -651,9 +708,13 @@
     const meses = Math.max(1, +$("p-meses").value || 1);
     const pctVenda = (+$("p-pct-venda").value || 100) / 100;
     return planilha.lotes.map(l => {
-      const venda = l.valor_avaliacao * pctVenda;
-      const op = calcularOperacao(l.lance_minimo, venda, meses, l.ocupado);
-      return { ...l, venda, meses, ...op, classificacao: classificar(op.retMensal) };
+      // venda estimada: preço de mercado por m² quando há área; senão avaliação
+      const mercado = estimarMercado(l);
+      const venda = (mercado > 0 ? mercado : l.valor_avaliacao) * pctVenda;
+      const semLeiloeiro = /venda direta|venda online/.test(normalizar(l.modalidade || ""));
+      const op = calcularOperacao(l.lance_minimo, venda, meses, l.ocupado, semLeiloeiro);
+      return { ...l, mercado_estimado: mercado, fonte_venda: mercado > 0 ? "mercado/m²" : "avaliação",
+               venda, meses, semLeiloeiro, ...op, classificacao: classificar(op.retMensal) };
     });
   }
 
@@ -662,6 +723,7 @@
       { k: "id", t: "Lote", esq: true, f: v => v },
       { k: "cidade", t: "Cidade", esq: true, f: (v, d) => (v || "—") + (d && d.zona_leste ? ' <span class="zl-tag">ZL</span>' : "") },
       { k: "tipo", t: "Tipo", esq: true, f: v => v ? cap(v) : "—" },
+      { k: "vagas", t: "Garagem", esq: true, f: v => isFinite(v) ? (v > 0 ? "Sim (" + v + ")" : "Não") : "—" },
       { k: "valor_avaliacao", t: "Avaliação", f: brl },
       { k: "lance_minimo", t: "Lance mín.", f: brl },
       { k: "desconto", t: "Desconto", f: v => pct(v, 1) },
@@ -685,7 +747,19 @@
     const planilha = slots[slotAtivo];
     if (!planilha) return;
     const plOrdem = plOrdens[slotAtivo];
-    const tudo = calcularPlanilha(planilha);
+    let tudo = calcularPlanilha(planilha);
+
+    /* filtro por tipo (apartamento/casa/terreno/comercial) */
+    const tipoFiltro = $("p-tipo").value;
+    if (tipoFiltro) tudo = tudo.filter(d => d.tipo_padrao === tipoFiltro);
+    if (!tudo.length) {
+      $("pl-tiles").innerHTML = `<div class="tile"><div class="rotulo">Sem resultados</div>
+        <div class="valor">0</div><div class="apoio">nenhum lote do tipo selecionado nesta planilha</div></div>`;
+      $("pl-grafico").innerHTML = ""; $("zl-grafico").innerHTML = "";
+      $("zl-nota").textContent = ""; $("pl-melhor").innerHTML = "";
+      $("pl-melhor-nota").textContent = ""; $("pl-corpo").innerHTML = ""; $("pl-cabecalho").innerHTML = "";
+      return;
+    }
 
     /* Zona Leste: card sempre visível + filtro opcional da vista inteira */
     const dadosZL = tudo.filter(d => d.zona_leste);
@@ -768,12 +842,13 @@
       " — maior desconto da planilha (" + (m.ocupado ? "ocupado" : "sem indicação de ocupação") + ")";
     $("pl-melhor").innerHTML = `
       <div class="l"><span>Valor de avaliação</span><span>${brl(m.valor_avaliacao)}</span></div>
+      ${m.mercado_estimado > 0 ? `<div class="l"><span>Mercado estimado (R$/m²)</span><span>${brl(m.mercado_estimado)}</span></div>` : ""}
       <div class="l"><span>Lance mínimo</span><span>${brl(m.lance_minimo)} <b>(−${pct(m.desconto, 1)})</b></span></div>
-      <div class="l"><span>Custos extras (+15%)</span><span>${brl(m.extras)}</span></div>
+      <div class="l"><span>Custos extras (+${Math.round(m.extrasPct * 100)}%${m.semLeiloeiro ? ", sem leiloeiro" : ""})</span><span>${brl(m.extras)}</span></div>
       <div class="l"><span>Cartório + jurídico${m.ocupado ? " + desocupação" : ""}</span><span>${brl(m.cartorio + P.custo_juridico_fixo + m.desocupacao)}</span></div>
       <div class="l"><span>Posse por ${m.meses} meses</span><span>${brl(m.posse)}</span></div>
       <div class="l"><span>Investimento total</span><span>${brl(m.investimento)}</span></div>
-      <div class="l"><span>Venda estimada</span><span>${brl(m.venda)}</span></div>
+      <div class="l"><span>Venda estimada (${m.fonte_venda})</span><span>${brl(m.venda)}</span></div>
       <div class="l"><span>Corretagem + IR</span><span>−${brl(m.corretagem + m.ir)}</span></div>
       <div class="l destaque"><span>Lucro líquido</span><span class="${m.lucro >= 0 ? "positivo" : "negativo"}">${brl(m.lucro)}</span></div>
       <div class="l"><span>ROI / retorno mensal</span><span class="${m.lucro >= 0 ? "positivo" : "negativo"}">${pct(m.roi, 1)} · ${pct(m.retMensal, 2)} a.m.</span></div>`;
@@ -823,13 +898,14 @@
         ${d.link ? `<div class="l"><span>Anúncio</span><span><a href="${d.link}" target="_blank" rel="noopener">ver no site do leilão ↗</a></span></div>` : ""}
       </div>
       <div><h3>Custos da operação</h3>
-        <div class="l"><span>Custos extras (+15%: reforma, ITBI, leiloeiro)</span><span>${brl(d.extras)}</span></div>
+        <div class="l"><span>Custos extras (+${Math.round(d.extrasPct * 100)}%${d.semLeiloeiro ? " — sem leiloeiro: Venda Online/Direta" : ": reforma, ITBI, leiloeiro"})</span><span>${brl(d.extras)}</span></div>
         <div class="l"><span>Cartório (1,5%) + jurídico${d.ocupado ? " + desocupação" : ""}</span><span>${brl(d.cartorio + P.custo_juridico_fixo + d.desocupacao)}</span></div>
         <div class="l"><span>Posse por ${d.meses} meses</span><span>${brl(d.posse)}</span></div>
         <div class="l"><span><b>Investimento total</b></span><span><b>${brl(d.investimento)}</b></span></div>
       </div>
       <div><h3>Resultado estimado</h3>
-        <div class="l"><span>Venda estimada</span><span>${brl(d.venda)}</span></div>
+        ${d.mercado_estimado > 0 ? `<div class="l"><span>Valor de mercado (R$/m² da região)</span><span>${brl(d.mercado_estimado)}</span></div>` : ""}
+        <div class="l"><span>Venda estimada (base: ${d.fonte_venda})</span><span>${brl(d.venda)}</span></div>
         <div class="l"><span>Corretagem (${pct(P.corretagem_venda, 0)})</span><span>−${brl(d.corretagem)}</span></div>
         <div class="l"><span>IR ganho de capital (${pct(P.ir_ganho_capital, 0)})</span><span>−${brl(d.ir)}</span></div>
         <div class="l"><span><b>Lucro líquido</b></span><span><b class="${d.lucro >= 0 ? "positivo" : "negativo"}">${brl(d.lucro)}</b></span></div>
@@ -846,7 +922,7 @@
     plOrdens[slotAtivo] = { k: th.dataset.k, asc: atual.k === th.dataset.k ? !atual.asc : false };
     desenharPlanilha();
   });
-  ["p-meses", "p-pct-venda", "p-zl"].forEach(id => $(id).addEventListener("input", () => { if (slotAtivo && slots[slotAtivo]) desenharPlanilha(); }));
+  ["p-meses", "p-pct-venda", "p-zl", "p-tipo"].forEach(id => $(id).addEventListener("input", () => { if (slotAtivo && slots[slotAtivo]) desenharPlanilha(); }));
 
   /* ============ upload ============ */
   const zona = $("zona"), arquivo = $("arquivo"), erro = $("erro");
@@ -938,6 +1014,7 @@
     { k: "id", t: "Lote", esq: true, f: v => v },
     { k: "cidade", t: "Cidade", esq: true, f: (v, i) => v + (i && i.zona_leste ? ' <span class="zl-tag">ZL</span>' : "") },
     { k: "tipo", t: "Tipo", esq: true, f: cap },
+    { k: "vagas", t: "Garagem", esq: true, f: v => isFinite(v) ? (v > 0 ? "Sim (" + v + ")" : "Não") : "—" },
     { k: "lance_minimo", t: "Lance mín.", f: brl },
     { k: "desconto_vs_avaliacao", t: "Desc. aval.", f: v => pct(v, 0) },
     { k: "preco_venda_previsto", t: "Venda prevista", f: brl },
@@ -999,7 +1076,7 @@
       </div>
       <div><h3>Custos da operação</h3>
         <div class="l"><span>Lance + cartório + jurídico${i.ocupado ? " + desocupação" : ""}</span><span>${brl(custoBase)}</span></div>
-        <div class="l"><span>Custos extras (+15%: reforma, ITBI, leiloeiro)</span><span>${brl(i.custo_extras)}</span></div>
+        <div class="l"><span>Custos extras (+${Math.round(i.custo_extras / i.lance_minimo * 100)}%${i.custo_extras / i.lance_minimo < 0.13 ? " — sem leiloeiro: Venda Online/Direta" : ": reforma, ITBI, leiloeiro"})</span><span>${brl(i.custo_extras)}</span></div>
         <div class="l"><span>Posse até vender (IPTU/condomínio)</span><span>${brl(i.custo_posse)}</span></div>
         <div class="l"><span><b>Investimento total</b></span><span><b>${brl(i.investimento_total)}</b></span></div>
       </div>
@@ -1027,10 +1104,10 @@
     const lance = +$("s-lance").value || 0;
     const venda = +$("s-venda").value || 0;
     const meses = Math.max(1, +$("s-meses").value || 1);
-    const op = calcularOperacao(lance, venda, meses, $("s-ocupado").checked);
+    const op = calcularOperacao(lance, venda, meses, $("s-ocupado").checked, $("s-direta").checked);
     const cls = op.lucro >= 0 ? "positivo" : "negativo";
     $("sim-out").innerHTML = `
-      <div class="l"><span>Custos extras (+15%: reforma, ITBI, leiloeiro)</span><span>${brl(op.extras)}</span></div>
+      <div class="l"><span>Custos extras (+${Math.round(op.extrasPct * 100)}%${$("s-direta").checked ? " — sem leiloeiro" : ": reforma, ITBI, leiloeiro"})</span><span>${brl(op.extras)}</span></div>
       <div class="l"><span>Cartório + jurídico${op.desocupacao ? " + desocupação" : ""}</span><span>${brl(op.cartorio + P.custo_juridico_fixo + op.desocupacao)}</span></div>
       <div class="l"><span>Posse por ${meses} ${meses === 1 ? "mês" : "meses"}</span><span>${brl(op.posse)}</span></div>
       <div class="l"><span>Investimento total</span><span>${brl(op.investimento)}</span></div>
@@ -1039,7 +1116,7 @@
       <div class="l"><span>ROI</span><span class="${cls}">${pct(op.roi, 1)}</span></div>
       <div class="l"><span>Retorno mensal</span><span class="${cls}">${pct(op.retMensal, 2)} a.m.</span></div>`;
   }
-  ["s-lance", "s-venda", "s-meses", "s-ocupado"].forEach(id => $(id).addEventListener("input", simular));
+  ["s-lance", "s-venda", "s-meses", "s-ocupado", "s-direta"].forEach(id => $(id).addEventListener("input", simular));
   simular();
 
   /* ============ rodapé ============ */

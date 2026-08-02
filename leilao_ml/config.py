@@ -13,6 +13,7 @@ from dataclasses import dataclass, asdict
 class ConfigCustos:
     # --- custos de aquisição ---
     custos_extras: float = 0.15           # % sobre o lance: possível reforma + ITBI + leiloeiro
+    comissao_leiloeiro: float = 0.05      # parcela dos extras dispensada em Venda Online/Direta (sem leiloeiro)
     registro_cartorio: float = 0.015      # % sobre o lance
     custo_juridico_fixo: float = 5_000.0  # assessoria jurídica / due diligence (R$)
     custo_desocupacao: float = 15_000.0   # ação de imissão na posse, se ocupado (R$)
