@@ -295,7 +295,16 @@
         </select>
       </div>
       <label class="check" style="grid-column:auto; align-self:center"><input id="p-zl" type="checkbox"> Somente Zona Leste (SP)</label>
-      <div class="info">Venda estimada usa o preço de mercado por m² da região (tabela editável no código) quando há área; senão a avaliação. Custos: +15% sobre o lance (+10% em Venda Online/Direta, que não tem leiloeiro), cartório 1,5%, jurídico, desocupação se ocupado, corretagem 6%, IR 15%.</div>
+      <div class="info">Venda estimada usa o preço de mercado por m² da região (tabela editável, ou estimado pela IA abaixo) quando há área; senão a avaliação. Custos: +15% sobre o lance (+10% em Venda Online/Direta, que não tem leiloeiro), cartório 1,5%, jurídico, desocupação se ocupado, corretagem 6%, IR 15%.</div>
+    </div>
+
+    <div class="premissas" style="margin-top:10px">
+      <div class="campo" style="max-width:280px">
+        <label for="p-gemini">Chave da API Gemini (Google AI Studio) — opcional</label>
+        <input id="p-gemini" type="password" placeholder="AIza..." autocomplete="off">
+      </div>
+      <button class="botao" id="btn-ia" type="button" style="align-self:center">🤖 Estimar R$/m² com a IA do Google</button>
+      <span class="nota" id="ia-status" style="margin:0; align-self:center"></span>
     </div>
 
     <div class="tiles" id="pl-tiles"></div>
@@ -594,12 +603,25 @@
     "porto alegre": 7000, "salvador": 5500, "goiania": 5500 };
   const FATOR_TIPO_M2 = { apartamento: 1.0, casa: 0.9 };
 
+  /* preços vindos da IA (Gemini) sobrepõem a tabela fixa; cache no navegador */
+  let precosIA = {};
+  try {
+    const c = JSON.parse(localStorage.getItem("precos_ia_v1") || "null");
+    if (c && c.precos) precosIA = c.precos;
+  } catch (e) { /* cache corrompido: ignora */ }
+
+  function chaveRegiao(l) {
+    return l.distrito_zl ? "zl:" + l.distrito_zl : "cid:" + normalizar(l.cidade);
+  }
+
   function estimarMercado(l) {
     const fator = FATOR_TIPO_M2[l.tipo_padrao];
-    if (!fator || !(l.area > 0)) return NaN;
+    if (!fator || !(l.area > 0)) return { valor: NaN, fonte: "" };
+    const chave = chaveRegiao(l);
+    if (precosIA[chave] > 0) return { valor: l.area * precosIA[chave] * fator, fonte: "IA/m²" };
     const pm2 = (l.distrito_zl && PRECO_M2_ZL[l.distrito_zl]) ||
       PRECO_M2_CIDADE[normalizar(l.cidade)] || NaN;
-    return pm2 ? l.area * pm2 * fator : NaN;
+    return pm2 ? { valor: l.area * pm2 * fator, fonte: "mercado/m²" } : { valor: NaN, fonte: "" };
   }
 
   /* "02/08/2026 01:35" -> timestamp para ordenar */
@@ -709,11 +731,11 @@
     const pctVenda = (+$("p-pct-venda").value || 100) / 100;
     return planilha.lotes.map(l => {
       // venda estimada: preço de mercado por m² quando há área; senão avaliação
-      const mercado = estimarMercado(l);
-      const venda = (mercado > 0 ? mercado : l.valor_avaliacao) * pctVenda;
+      const m = estimarMercado(l);
+      const venda = (m.valor > 0 ? m.valor : l.valor_avaliacao) * pctVenda;
       const semLeiloeiro = /venda direta|venda online/.test(normalizar(l.modalidade || ""));
       const op = calcularOperacao(l.lance_minimo, venda, meses, l.ocupado, semLeiloeiro);
-      return { ...l, mercado_estimado: mercado, fonte_venda: mercado > 0 ? "mercado/m²" : "avaliação",
+      return { ...l, mercado_estimado: m.valor, fonte_venda: m.valor > 0 ? m.fonte : "avaliação",
                venda, meses, semLeiloeiro, ...op, classificacao: classificar(op.retMensal) };
     });
   }
@@ -923,6 +945,79 @@
     desenharPlanilha();
   });
   ["p-meses", "p-pct-venda", "p-zl", "p-tipo"].forEach(id => $(id).addEventListener("input", () => { if (slotAtivo && slots[slotAtivo]) desenharPlanilha(); }));
+
+  /* ============ R$/m² estimado pela IA do Google (Gemini) ============ */
+  /* A chave fica SÓ no seu navegador (localStorage) e as chamadas vão
+     direto para a API do Google — nada passa por outro servidor. */
+  const MODELOS_GEMINI = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+  $("p-gemini").value = localStorage.getItem("gemini_key") || "";
+  const statusIA = msg => { $("ia-status").textContent = msg; };
+  if (Object.keys(precosIA).length) {
+    statusIA(Object.keys(precosIA).length + " regiões com preço estimado pela IA (cache deste navegador).");
+  }
+
+  async function chamarGemini(key, prompt) {
+    let ultimoErro = null;
+    for (const modelo of MODELOS_GEMINI) {
+      const r = await fetch(
+        "https://generativelanguage.googleapis.com/v1beta/models/" + modelo +
+        ":generateContent?key=" + encodeURIComponent(key), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { responseMimeType: "application/json", temperature: 0.2 },
+          }),
+        });
+      if (r.status === 404) { ultimoErro = new Error("modelo " + modelo + " indisponível"); continue; }
+      if (!r.ok) throw new Error("Gemini respondeu " + r.status + ": " + (await r.text()).slice(0, 180));
+      const j = await r.json();
+      return (j.candidates && j.candidates[0] && j.candidates[0].content &&
+        j.candidates[0].content.parts && j.candidates[0].content.parts[0].text) || "";
+    }
+    throw ultimoErro || new Error("nenhum modelo Gemini disponível");
+  }
+
+  $("btn-ia").addEventListener("click", async () => {
+    const key = $("p-gemini").value.trim();
+    if (!key) return statusIA("Cole antes a sua chave do Google AI Studio (aistudio.google.com → Get API key).");
+    const planilha = slots[slotAtivo] || slots.arrematador || slots.caixa;
+    if (!planilha) return statusIA("Envie uma planilha primeiro.");
+    localStorage.setItem("gemini_key", key);
+
+    const grupos = new Map();
+    planilha.lotes.forEach(l => {
+      if (!FATOR_TIPO_M2[l.tipo_padrao] || !(l.area > 0)) return;
+      const ch = chaveRegiao(l);
+      if (!grupos.has(ch)) grupos.set(ch, l.distrito_zl
+        ? 'chave "' + ch + '": distrito ' + l.distrito_zl + ", Zona Leste, São Paulo/SP"
+        : 'chave "' + ch + '": cidade de ' + l.cidade + (l.uf ? "/" + l.uf : ""));
+    });
+    const linhas = [...grupos.values()].slice(0, 150);
+    if (!linhas.length) return statusIA("Nenhum lote com área conhecida para estimar.");
+    statusIA("Consultando a IA do Google para " + linhas.length + " regiões…");
+
+    const prompt = "Você é um avaliador imobiliário brasileiro. Estime o preço médio de VENDA por metro quadrado (R$/m²) de APARTAMENTOS USADOS em cada região abaixo, em valores atuais e realistas de mercado. " +
+      'Responda SOMENTE com JSON válido: um array de objetos {"chave": string, "preco_m2": number}. Não escreva mais nada.\nRegiões:\n- ' +
+      linhas.join("\n- ");
+    try {
+      const texto = await chamarGemini(key, prompt);
+      const arr = JSON.parse(texto);
+      let n = 0;
+      arr.forEach(o => {
+        if (o && o.chave && o.preco_m2 > 500 && o.preco_m2 < 60000) { precosIA[o.chave] = o.preco_m2; n++; }
+      });
+      localStorage.setItem("precos_ia_v1", JSON.stringify({ precos: precosIA, em: new Date().toISOString() }));
+      statusIA(n + " regiões atualizadas pela IA ✓ — venda estimada e ROI recalculados (base \"IA/m²\").");
+      if (slotAtivo) desenharPlanilha();
+    } catch (e) {
+      if (e instanceof TypeError) {
+        statusIA("Esta prévia hospedada bloqueia chamadas externas. No site publicado na Vercel (ou abrindo o index.html do zip) a IA funciona normalmente.");
+      } else {
+        statusIA("Erro: " + e.message);
+      }
+    }
+  });
 
   /* ============ upload ============ */
   const zona = $("zona"), arquivo = $("arquivo"), erro = $("erro");
