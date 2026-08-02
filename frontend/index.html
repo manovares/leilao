@@ -949,7 +949,7 @@
   /* ============ R$/m² estimado pela IA do Google (Gemini) ============ */
   /* A chave fica SÓ no seu navegador (localStorage) e as chamadas vão
      direto para a API do Google — nada passa por outro servidor. */
-  const MODELOS_GEMINI = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+  const MODELOS_GEMINI = ["gemini-2.5-flash", "gemini-3-flash-preview", "gemini-2.0-flash", "gemini-1.5-flash"];
   $("p-gemini").value = localStorage.getItem("gemini_key") || "";
   const statusIA = msg => { $("ia-status").textContent = msg; };
   if (Object.keys(precosIA).length) {
