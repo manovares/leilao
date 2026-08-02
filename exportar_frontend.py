@@ -39,7 +39,7 @@ def main() -> None:
 
     # só as colunas que o front usa, para manter o arquivo leve
     colunas_front = [
-        "id", "cidade", "bairro", "uf", "endereco", "tipo", "padrao_bairro",
+        "id", "cidade", "bairro", "uf", "endereco", "tipo", "padrao_bairro", "zona_leste",
         "area_m2", "quartos", "vagas", "ocupado", "aceita_financiamento",
         "modalidade", "link", "valor_avaliacao", "lance_minimo",
         "desconto_vs_avaliacao", "preco_venda_previsto",

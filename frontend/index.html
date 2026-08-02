@@ -199,6 +199,11 @@
   :root[data-theme="dark"] .chip.regular { color: var(--warning); }
   @media (prefers-color-scheme: dark) { :root:where(:not([data-theme="light"])) .chip.regular { color: var(--warning); } }
   .chip.evitar { color: var(--critical); background: rgba(208, 59, 59, 0.12); }
+  .zl-tag {
+    display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 4px;
+    font-size: 0.68rem; font-weight: 700; letter-spacing: 0.03em;
+    color: var(--accent); background: var(--accent-soft); border: 1px solid var(--border);
+  }
 
   tr.detalhe td { background: var(--page); padding: 14px 16px; white-space: normal; }
   .det-grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; text-align: left; }
@@ -279,6 +284,7 @@
         <label for="p-pct-venda">Preço de venda (% do valor de avaliação)</label>
         <input id="p-pct-venda" type="number" value="100" min="30" max="200" step="5">
       </div>
+      <label class="check" style="grid-column:auto; align-self:center"><input id="p-zl" type="checkbox"> Somente Zona Leste (SP)</label>
       <div class="info">O lucro usa estas premissas + os custos fixos (+15% sobre o lance, cartório 1,5%, jurídico, desocupação se ocupado, corretagem 6%, IR 15%).</div>
     </div>
 
@@ -295,6 +301,12 @@
         <p class="nota" id="pl-melhor-nota"></p>
         <div class="sim-out" id="pl-melhor" style="margin-top:0; border-top:none; padding-top:0"></div>
       </div>
+    </div>
+
+    <div class="cartao" style="margin-top:12px">
+      <h2>🧭 Zona Leste — São Paulo</h2>
+      <p class="nota" id="zl-nota"></p>
+      <div id="zl-grafico"></div>
     </div>
 
     <div class="cartao tabela-cartao">
@@ -348,6 +360,7 @@
 
     <div class="cartao tabela-cartao">
       <h2>Ranking completo</h2>
+      <label class="check" style="margin:0 0 8px"><input id="md-zl" type="checkbox"> Somente Zona Leste (SP)</label>
       <p class="nota" id="md-tabela-nota">Clique no cabeçalho para ordenar e em uma linha para abrir o detalhamento.</p>
       <table>
         <thead><tr id="cabecalho"></tr></thead>
@@ -517,6 +530,23 @@
     };
   }
 
+  /* distritos/bairros da Zona Leste de São Paulo (capital) */
+  const DISTRITOS_ZL = ["agua rasa", "analia franco", "aricanduva", "artur alvim",
+    "belem", "burgo paulista", "cangaiba", "carrao", "cidade lider",
+    "cidade tiradentes", "cidade a e carvalho", "a e carvalho",
+    "ermelino matarazzo", "guaianases", "guaianazes", "iguatemi",
+    "itaim paulista", "itaquera", "jardim helena", "jose bonifacio", "lajeado",
+    "mooca", "parque do carmo", "penha", "ponte rasa", "sao lucas",
+    "sao mateus", "sao miguel", "sao rafael", "sapopemba", "tatuape",
+    "teotonio vilela", "vila antonieta", "vila curuca", "vila esperanca",
+    "vila formosa", "vila jacui", "vila matilde", "vila prudente", "vila re"];
+
+  function ehZonaLeste(cidade, bairro, endereco) {
+    if (!normalizar(cidade).includes("sao paulo")) return false;
+    const texto = " " + normalizar((bairro || "") + " | " + (endereco || "")) + " ";
+    return DISTRITOS_ZL.some(d => texto.includes(" " + d + " "));
+  }
+
   /* "02/08/2026 01:35" -> timestamp para ordenar */
   function lerDataBR(s) {
     const m = String(s).match(/(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2}))?/);
@@ -597,6 +627,7 @@
         data_leilao_ts: lerDataBR(dataLeilao),
         link: /^https?:\/\//.test(pega(l, "link")) ? pega(l, "link") : "",
         ocupado, ocupacaoAssumida: semColunaOcupacao,
+        zona_leste: ehZonaLeste(pega(l, "cidade"), pega(l, "bairro"), pega(l, "endereco")),
         valor_avaliacao: avaliacao,
         lance_minimo: lance,
         desconto: 1 - lance / avaliacao,
@@ -629,7 +660,7 @@
   function montarColunas(dados) {
     const cols = [
       { k: "id", t: "Lote", esq: true, f: v => v },
-      { k: "cidade", t: "Cidade", esq: true, f: v => v || "—" },
+      { k: "cidade", t: "Cidade", esq: true, f: (v, d) => (v || "—") + (d && d.zona_leste ? ' <span class="zl-tag">ZL</span>' : "") },
       { k: "tipo", t: "Tipo", esq: true, f: v => v ? cap(v) : "—" },
       { k: "valor_avaliacao", t: "Avaliação", f: brl },
       { k: "lance_minimo", t: "Lance mín.", f: brl },
@@ -654,10 +685,43 @@
     const planilha = slots[slotAtivo];
     if (!planilha) return;
     const plOrdem = plOrdens[slotAtivo];
-    const dados = calcularPlanilha(planilha);
+    const tudo = calcularPlanilha(planilha);
+
+    /* Zona Leste: card sempre visível + filtro opcional da vista inteira */
+    const dadosZL = tudo.filter(d => d.zona_leste);
+    const zlTop = [...dadosZL].sort((a, b) => b.desconto - a.desconto).slice(0, 10);
+    $("zl-nota").textContent = dadosZL.length
+      ? dadosZL.length + (dadosZL.length === 1 ? " lote" : " lotes") +
+        " da Zona Leste de São Paulo nesta planilha — maiores descontos abaixo. Clique em \"Somente Zona Leste\" para filtrar tudo."
+      : "Nenhum lote da Zona Leste de São Paulo foi identificado nesta planilha.";
+    const maxZL = Math.max(...zlTop.map(d => d.desconto), 0.0001);
+    $("zl-grafico").innerHTML = zlTop.map((d, ix) => {
+      const w = Math.max(2, d.desconto / maxZL * 100);
+      const nome = d.id + (d.bairro ? " · " + titulo(d.bairro) : "");
+      return `<div class="linha-barra" data-ix="${ix}">
+        <div class="nome">${nome}</div>
+        <div class="pista"><div class="barra" style="width:${w * 0.75}%"></div>
+          <div class="barra-valor" style="left:calc(${w * 0.75}% + 8px)">${pct(d.desconto, 1)}</div>
+        </div></div>`;
+    }).join("");
+    $("zl-grafico").onmousemove = ev => {
+      const linha = ev.target.closest(".linha-barra");
+      if (!linha) return esconderDica();
+      const d = zlTop[+linha.dataset.ix];
+      mostrarDica(ev, `<b>${d.id}${d.tipo ? " — " + cap(d.tipo) : ""}${d.bairro ? ", " + titulo(d.bairro) : ""}</b>
+        <div class="l"><span>Avaliação</span><span>${brl(d.valor_avaliacao)}</span></div>
+        <div class="l"><span>Lance mínimo</span><span>${brl(d.lance_minimo)}</span></div>
+        <div class="l"><span>Custo total (+15%)</span><span>${brl(d.investimento)}</span></div>
+        <div class="l"><span>Lucro estimado</span><span>${brl(d.lucro)}</span></div>`);
+    };
+    $("zl-grafico").onmouseleave = esconderDica;
+
+    const soZL = $("p-zl").checked && dadosZL.length > 0;
+    const dados = soZL ? dadosZL : tudo;
+
     plColunas = montarColunas(dados);
     if (!plColunas.some(c => c.k === plOrdem.k)) plOrdem.k = "desconto";
-    $("pl-titulo").textContent = "Ranking — " + ROTULO_SLOT[slotAtivo];
+    $("pl-titulo").textContent = "Ranking — " + ROTULO_SLOT[slotAtivo] + (soZL ? " · só Zona Leste" : "");
     const porDesconto = [...dados].sort((a, b) => b.desconto - a.desconto);
 
     /* KPIs — o desconto médio só considera lotes com desconto real
@@ -729,7 +793,7 @@
       : "") + "Clique no cabeçalho para reordenar e em uma linha para o detalhamento de custos.";
     $("pl-corpo").innerHTML = visiveis.map((d, ix) => `
       <tr class="linha" tabindex="0" data-ix="${ix}">
-        ${plColunas.map(c => `<td class="${c.esq ? "esq" : ""}">${c.f(d[c.k])}</td>`).join("")}
+        ${plColunas.map(c => `<td class="${c.esq ? "esq" : ""}">${c.f(d[c.k], d)}</td>`).join("")}
       </tr>`).join("");
     $("pl-corpo").querySelectorAll("tr.linha").forEach(tr => {
       const abrir = () => alternarDetalhePlanilha(tr, visiveis[+tr.dataset.ix]);
@@ -782,7 +846,7 @@
     plOrdens[slotAtivo] = { k: th.dataset.k, asc: atual.k === th.dataset.k ? !atual.asc : false };
     desenharPlanilha();
   });
-  ["p-meses", "p-pct-venda"].forEach(id => $(id).addEventListener("input", () => { if (slotAtivo && slots[slotAtivo]) desenharPlanilha(); }));
+  ["p-meses", "p-pct-venda", "p-zl"].forEach(id => $(id).addEventListener("input", () => { if (slotAtivo && slots[slotAtivo]) desenharPlanilha(); }));
 
   /* ============ upload ============ */
   const zona = $("zona"), arquivo = $("arquivo"), erro = $("erro");
@@ -872,7 +936,7 @@
 
   const colunas = [
     { k: "id", t: "Lote", esq: true, f: v => v },
-    { k: "cidade", t: "Cidade", esq: true, f: v => v },
+    { k: "cidade", t: "Cidade", esq: true, f: (v, i) => v + (i && i.zona_leste ? ' <span class="zl-tag">ZL</span>' : "") },
     { k: "tipo", t: "Tipo", esq: true, f: cap },
     { k: "lance_minimo", t: "Lance mín.", f: brl },
     { k: "desconto_vs_avaliacao", t: "Desc. aval.", f: v => pct(v, 0) },
@@ -893,7 +957,8 @@
         <span class="seta">${ordem.k === c.k ? (ordem.asc ? "▲" : "▼") : ""}</span></th>`).join("");
   }
   function desenharCorpo() {
-    const lista = [...imoveis].sort((a, b) => {
+    const base = $("md-zl").checked ? imoveis.filter(i => i.zona_leste) : imoveis;
+    const lista = [...base].sort((a, b) => {
       const va = a[ordem.k], vb = b[ordem.k];
       const cmp = typeof va === "string" ? va.localeCompare(vb) : va - vb;
       return ordem.asc ? cmp : -cmp;
@@ -901,10 +966,11 @@
     const visiveis = lista.slice(0, MAX_LINHAS);
     $("md-tabela-nota").textContent = (lista.length > MAX_LINHAS
       ? `Mostrando os ${MAX_LINHAS} primeiros de ${lista.length} imóveis na ordenação atual. `
-      : "") + "Clique no cabeçalho para ordenar e em uma linha para abrir o detalhamento.";
+      : ($("md-zl").checked ? `${lista.length} imóveis da Zona Leste de São Paulo. ` : "")) +
+      "Clique no cabeçalho para ordenar e em uma linha para abrir o detalhamento.";
     $("corpo").innerHTML = visiveis.map((i, ix) => `
       <tr class="linha" tabindex="0" data-ix="${ix}">
-        ${colunas.map(c => `<td class="${c.esq ? "esq" : ""}">${c.f(i[c.k])}</td>`).join("")}
+        ${colunas.map(c => `<td class="${c.esq ? "esq" : ""}">${c.f(i[c.k], i)}</td>`).join("")}
       </tr>`).join("");
     $("corpo").querySelectorAll("tr.linha").forEach(tr => {
       const abrir = () => alternarDetalheModelo(tr, visiveis[+tr.dataset.ix]);
@@ -953,6 +1019,7 @@
     ordem = { k: th.dataset.k, asc: ordem.k === th.dataset.k ? !ordem.asc : false };
     desenharCabecalho(); desenharCorpo();
   });
+  $("md-zl").addEventListener("input", desenharCorpo);
   desenharCabecalho(); desenharCorpo();
 
   /* ============ simulador ============ */

@@ -108,4 +108,6 @@ def carregar_arrematador(caminho: str, ocupado_padrao: int = 1) -> pd.DataFrame:
     })
     df = df.dropna(subset=["valor_avaliacao", "lance_minimo"])
     df = df[(df["valor_avaliacao"] > 0) & (df["lance_minimo"] > 0)]
-    return df.reset_index(drop=True)
+
+    from .zonas import marcar_zona_leste
+    return marcar_zona_leste(df.reset_index(drop=True))
