@@ -300,7 +300,7 @@
 
     <div class="premissas" style="margin-top:10px">
       <div class="campo" style="max-width:280px">
-        <label for="p-gemini">Chave da API Gemini (Google AI Studio) — opcional</label>
+        <label for="p-gemini">Chave da API Gemini — opcional (vazio = usa a chave do servidor do site)</label>
         <input id="p-gemini" type="password" placeholder="AIza..." autocomplete="off">
       </div>
       <button class="botao" id="btn-ia" type="button" style="align-self:center">🤖 Estimar R$/m² com a IA do Google</button>
@@ -980,10 +980,9 @@
 
   $("btn-ia").addEventListener("click", async () => {
     const key = $("p-gemini").value.trim();
-    if (!key) return statusIA("Cole antes a sua chave do Google AI Studio (aistudio.google.com → Get API key).");
     const planilha = slots[slotAtivo] || slots.arrematador || slots.caixa;
     if (!planilha) return statusIA("Envie uma planilha primeiro.");
-    localStorage.setItem("gemini_key", key);
+    if (key) localStorage.setItem("gemini_key", key);
 
     const grupos = new Map();
     planilha.lotes.forEach(l => {
@@ -1001,8 +1000,22 @@
       'Responda SOMENTE com JSON válido: um array de objetos {"chave": string, "preco_m2": number}. Não escreva mais nada.\nRegiões:\n- ' +
       linhas.join("\n- ");
     try {
-      const texto = await chamarGemini(key, prompt);
-      const arr = JSON.parse(texto);
+      let arr;
+      if (key) {
+        // chave própria do visitante: chamada direta ao Google
+        arr = JSON.parse(await chamarGemini(key, prompt));
+      } else {
+        // sem chave: usa o backend do site (Vercel) com a chave do servidor
+        const r = await fetch("api/estimar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ regioes: linhas }),
+        });
+        if (r.status === 404 || r.status === 405 || r.status === 501) throw new Error("SEM_BACKEND");
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.erro || "servidor respondeu " + r.status);
+        arr = j.precos;
+      }
       let n = 0;
       arr.forEach(o => {
         if (o && o.chave && o.preco_m2 > 500 && o.preco_m2 < 60000) { precosIA[o.chave] = o.preco_m2; n++; }
@@ -1011,8 +1024,10 @@
       statusIA(n + " regiões atualizadas pela IA ✓ — venda estimada e ROI recalculados (base \"IA/m²\").");
       if (slotAtivo) desenharPlanilha();
     } catch (e) {
-      if (e instanceof TypeError) {
-        statusIA("Esta prévia hospedada bloqueia chamadas externas. No site publicado na Vercel (ou abrindo o index.html do zip) a IA funciona normalmente.");
+      if (e.message === "SEM_BACKEND") {
+        statusIA("Este endereço não tem o backend da IA. No site na Vercel com a variável GEMINI_API_KEY configurada, qualquer visitante usa sem chave — ou cole a sua chave no campo ao lado.");
+      } else if (e instanceof TypeError) {
+        statusIA("Esta prévia hospedada bloqueia chamadas externas. No site publicado na Vercel a IA funciona para qualquer visitante.");
       } else {
         statusIA("Erro: " + e.message);
       }
