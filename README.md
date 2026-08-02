@@ -83,6 +83,8 @@ python analisar.py --dados edital.csv --config custos.json
 
 O dashboard em `frontend/` mostra os KPIs do lote, o top 10 por retorno mensal, o ranking completo (ordenável, com detalhamento de custos por imóvel) e um **simulador de arremate** que sempre aplica os +15% de custos extras. É 100% estático — basta abrir `frontend/index.html` no navegador.
 
+O upload aceita **Excel (.xls/.xlsx) e CSV** — a leitura de Excel usa o SheetJS vendorizado em `frontend/xlsx.full.min.js`, sem depender de CDN. Nos scripts Python, arquivos `.xlsx` são lidos via openpyxl (para `.xls` antigo, instale também `xlrd`).
+
 Para atualizar os dados exibidos após uma nova análise:
 
 ```bash

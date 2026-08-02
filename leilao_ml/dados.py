@@ -61,11 +61,26 @@ def carregar_csv(caminho: str, treino: bool = False) -> pd.DataFrame:
     return df
 
 
+def _excel_para_csv(caminho: str) -> str:
+    """Converte .xls/.xlsx em um CSV temporário (sep ';') para reaproveitar
+    os loaders de texto. Requer openpyxl (.xlsx) ou xlrd (.xls)."""
+    if not caminho.lower().endswith((".xls", ".xlsx")):
+        return caminho
+    import tempfile
+
+    df = pd.read_excel(caminho, header=None, dtype=str)
+    tmp = tempfile.NamedTemporaryFile(suffix=".csv", delete=False)
+    df.to_csv(tmp.name, sep=";", index=False, header=False, encoding="utf-8")
+    return tmp.name
+
+
 def carregar_qualquer(caminho: str, treino: bool = False) -> pd.DataFrame:
-    """Carrega um CSV no esquema do pipeline OU a lista oficial da Caixa,
-    detectando o formato automaticamente."""
+    """Carrega CSV ou Excel (.xls/.xlsx) no esquema do pipeline, na lista
+    oficial da Caixa ou na planilha do Arrematador — detecção automática."""
     from .arrematador import carregar_arrematador, eh_planilha_arrematador
     from .caixa import carregar_caixa, eh_planilha_caixa
+
+    caminho = _excel_para_csv(caminho)
 
     if eh_planilha_arrematador(caminho) or eh_planilha_caixa(caminho):
         if treino:

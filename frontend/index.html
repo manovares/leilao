@@ -236,8 +236,8 @@
     <div class="zona" id="zona" tabindex="0" role="button" aria-label="Enviar planilha CSV">
       <div class="icone">📄</div>
       <div class="principal">Arraste sua planilha aqui ou clique para escolher</div>
-      <div class="apoio">Aceita a <b>Lista da Caixa</b> (venda-imoveis.caixa.gov.br) e a <b>planilha do Arrematador</b> — cada uma abre na sua própria aba. Do Excel: Salvar como → CSV. Valores como "R$ 123.456,78" são aceitos.</div>
-      <input type="file" id="arquivo" accept=".csv,text/csv">
+      <div class="apoio">Aceita <b>Excel (.xls / .xlsx)</b> e <b>.csv</b>: a <b>Lista da Caixa</b> (venda-imoveis.caixa.gov.br) e a <b>planilha do Arrematador</b> abrem cada uma na sua própria aba. Valores como "R$ 123.456,78" são aceitos.</div>
+      <input type="file" id="arquivo" accept=".csv,.xls,.xlsx,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
     </div>
     <div id="erro" class="erro" hidden></div>
 
@@ -361,6 +361,7 @@
 
 <div class="dica" id="dica"></div>
 
+<script src="xlsx.full.min.js"></script>
 <script src="dados.js"></script>
 <script>
 (function () {
@@ -790,9 +791,20 @@
     const leitor = new FileReader();
     leitor.onload = () => {
       try {
-        // detecta a codificação: a lista da Caixa vem em ISO-8859-1
-        let texto = new TextDecoder("utf-8").decode(leitor.result);
-        if (texto.includes("\uFFFD")) texto = new TextDecoder("windows-1252").decode(leitor.result);
+        const bytes = new Uint8Array(leitor.result);
+        let texto;
+        // Excel: .xlsx começa com "PK", .xls (antigo) com D0 CF 11 E0
+        const ehXlsx = bytes[0] === 0x50 && bytes[1] === 0x4b;
+        const ehXls = bytes[0] === 0xd0 && bytes[1] === 0xcf && bytes[2] === 0x11 && bytes[3] === 0xe0;
+        if (ehXlsx || ehXls) {
+          const wb = XLSX.read(leitor.result, { type: "array" });
+          const aba = wb.Sheets[wb.SheetNames[0]];
+          texto = XLSX.utils.sheet_to_csv(aba, { FS: ";", blankrows: false });
+        } else {
+          // CSV: detecta a codificação (a lista da Caixa vem em ISO-8859-1)
+          texto = new TextDecoder("utf-8").decode(leitor.result);
+          if (texto.includes("\uFFFD")) texto = new TextDecoder("windows-1252").decode(leitor.result);
+        }
         const resultado = analisarPlanilha(texto, f.name);
         slots[resultado.formato] = resultado;
         $("aba-" + resultado.formato).hidden = false;
