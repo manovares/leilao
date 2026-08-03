@@ -39,19 +39,23 @@ module.exports = async (req, res) => {
   hist.push(agora);
   ACESSOS.set(ip, hist);
 
-  const regioes = Array.isArray(req.body && req.body.regioes)
-    ? req.body.regioes.filter(r => typeof r === "string").slice(0, 150)
-    : [];
-  if (!regioes.length) {
-    return res.status(400).json({ erro: "envie { regioes: [\"chave \\\"...\\\": descrição\", ...] }" });
+  const soTexto = v => Array.isArray(v) ? v.filter(x => typeof x === "string").slice(0, 150) : [];
+  const regioes = soTexto(req.body && req.body.regioes);
+  const imoveis = soTexto(req.body && req.body.imoveis);
+  if (!regioes.length && !imoveis.length) {
+    return res.status(400).json({ erro: "envie { regioes: [...] } ou { imoveis: [...] }" });
   }
 
-  const prompt =
-    "Você é um avaliador imobiliário brasileiro. Estime o preço médio de VENDA por metro " +
-    "quadrado (R$/m²) de APARTAMENTOS USADOS em cada região abaixo, em valores atuais e " +
-    'realistas de mercado. Responda SOMENTE com JSON válido: um array de objetos ' +
-    '{"chave": string, "preco_m2": number}. Não escreva mais nada.\nRegiões:\n- ' +
-    regioes.join("\n- ");
+  const prompt = regioes.length
+    ? "Você é um avaliador imobiliário brasileiro. Estime o preço médio de VENDA por metro " +
+      "quadrado (R$/m²) de APARTAMENTOS USADOS em cada região abaixo, em valores atuais e " +
+      'realistas de mercado. Responda SOMENTE com JSON válido: um array de objetos ' +
+      '{"chave": string, "preco_m2": number}. Não escreva mais nada.\nRegiões:\n- ' +
+      regioes.join("\n- ")
+    : "Você é um avaliador imobiliário brasileiro. Estime o valor de VENDA de mercado " +
+      "(em reais) de cada imóvel usado abaixo, realista para a localização e o tipo. " +
+      'Responda SOMENTE com JSON válido: um array de objetos {"id": string, "valor": number}. ' +
+      "Não escreva mais nada.\nImóveis:\n- " + imoveis.join("\n- ");
 
   for (const modelo of MODELOS) {
     const r = await fetch(

@@ -612,10 +612,13 @@
   const FATOR_TIPO_M2 = { apartamento: 1.0, casa: 0.9 };
 
   /* preços vindos da IA (Gemini) sobrepõem a tabela fixa; cache no navegador */
-  let precosIA = {};
+  let precosIA = {};   // R$/m² por região
+  let valoresIA = {};  // valor total por lote (avaliação individual da IA)
   try {
     const c = JSON.parse(localStorage.getItem("precos_ia_v1") || "null");
     if (c && c.precos) precosIA = c.precos;
+    const v = JSON.parse(localStorage.getItem("valores_ia_v1") || "null");
+    if (v && v.valores) valoresIA = v.valores;
   } catch (e) { /* cache corrompido: ignora */ }
 
   function chaveRegiao(l) {
@@ -623,6 +626,8 @@
   }
 
   function estimarMercado(l) {
+    // 1º: avaliação individual do lote feita pela IA (funciona mesmo sem área)
+    if (valoresIA[l.id] > 0) return { valor: valoresIA[l.id], fonte: "IA/imóvel" };
     const fator = FATOR_TIPO_M2[l.tipo_padrao];
     if (!fator || !(l.area > 0)) return { valor: NaN, fonte: "" };
     const chave = chaveRegiao(l);
@@ -733,6 +738,7 @@
     arrematador: { k: "desconto", asc: false },
     caixa: { k: "desconto", asc: false },
   };
+  let ultimaListaPlanilha = null; // conjunto filtrado em exibição (p/ IA por lote)
 
   function calcularPlanilha(planilha) {
     const meses = Math.max(1, +$("p-meses").value || 1);
@@ -833,6 +839,7 @@
 
     const soZL = $("p-zl").checked && dadosZL.length > 0;
     const dados = soZL ? dadosZL : tudo;
+    ultimaListaPlanilha = dados;
 
     plColunas = montarColunas(dados);
     if (!plColunas.some(c => c.k === plOrdem.k)) plOrdem.k = "desconto";
@@ -1024,29 +1031,62 @@
     const prompt = "Você é um avaliador imobiliário brasileiro. Estime o preço médio de VENDA por metro quadrado (R$/m²) de APARTAMENTOS USADOS em cada região abaixo, em valores atuais e realistas de mercado. " +
       'Responda SOMENTE com JSON válido: um array de objetos {"chave": string, "preco_m2": number}. Não escreva mais nada.\nRegiões:\n- ' +
       linhas.join("\n- ");
+    /* helper: envia um prompt pela chave do visitante OU pelo backend do site */
+    async function consultarIA(corpo, promptDireto) {
+      if (key) return JSON.parse(await chamarGemini(key, promptDireto));
+      const r = await fetch("api/estimar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(corpo),
+      });
+      if (r.status === 404 || r.status === 405 || r.status === 501) throw new Error("SEM_BACKEND");
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.erro || "servidor respondeu " + r.status);
+      return j.precos;
+    }
+
     try {
-      let arr;
-      if (key) {
-        // chave própria do visitante: chamada direta ao Google
-        arr = JSON.parse(await chamarGemini(key, prompt));
-      } else {
-        // sem chave: usa o backend do site (Vercel) com a chave do servidor
-        const r = await fetch("api/estimar", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ regioes: linhas }),
-        });
-        if (r.status === 404 || r.status === 405 || r.status === 501) throw new Error("SEM_BACKEND");
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(j.erro || "servidor respondeu " + r.status);
-        arr = j.precos;
-      }
+      /* etapa 1: preço por m² de cada região (1 chamada) */
+      const arr = await consultarIA({ regioes: linhas }, prompt);
       let n = 0;
       arr.forEach(o => {
         if (o && o.chave && o.preco_m2 > 500 && o.preco_m2 < 60000) { precosIA[o.chave] = o.preco_m2; n++; }
       });
       localStorage.setItem("precos_ia_v1", JSON.stringify({ precos: precosIA, em: new Date().toISOString() }));
-      statusIA(n + " regiões atualizadas pela IA ✓ — venda estimada e ROI recalculados (base \"IA/m²\").");
+      if (slotAtivo) desenharPlanilha();
+
+      /* etapa 2: lotes em exibição que continuam sem valor de mercado
+         (ex.: sem área na planilha) — a IA avalia cada imóvel pelo endereço */
+      const alvo = (ultimaListaPlanilha || [])
+        .filter(d => !(estimarMercado(d).valor > 0) && d.valor_avaliacao > 0)
+        .slice(0, 120);
+      let nLotes = 0;
+      for (let i = 0; i < alvo.length; i += 40) {
+        statusIA("Regiões ok ✓ — avaliando lotes sem área pelo endereço… " +
+          Math.min(i + 40, alvo.length) + "/" + alvo.length);
+        const chunk = alvo.slice(i, i + 40);
+        const linhasLotes = chunk.map(d =>
+          'id "' + d.id + '": ' + (d.tipo || "imóvel") +
+          (d.endereco ? ", " + d.endereco : "") +
+          (d.bairro ? ", " + d.bairro : "") +
+          ", " + d.cidade + (d.uf ? "/" + d.uf : "") +
+          (d.area > 0 ? ", " + d.area + " m²" : "") +
+          (d.quartos > 0 ? ", " + d.quartos + " quarto(s)" : ""));
+        const promptLotes =
+          "Você é um avaliador imobiliário brasileiro. Estime o valor de VENDA de mercado " +
+          "(em reais) de cada imóvel usado abaixo, realista para a localização e o tipo. " +
+          'Responda SOMENTE com JSON válido: um array de objetos {"id": string, "valor": number}. ' +
+          "Não escreva mais nada.\nImóveis:\n- " + linhasLotes.join("\n- ");
+        const arr2 = await consultarIA({ imoveis: linhasLotes }, promptLotes);
+        arr2.forEach(o => {
+          if (o && o.id && o.valor > 10000 && o.valor < 100000000) { valoresIA[String(o.id).trim()] = o.valor; nLotes++; }
+        });
+      }
+      if (nLotes) {
+        localStorage.setItem("valores_ia_v1", JSON.stringify({ valores: valoresIA, em: new Date().toISOString() }));
+      }
+      statusIA(n + " regiões" + (nLotes ? " + " + nLotes + " lotes avaliados individualmente" : "") +
+        " pela IA ✓ — venda estimada e ROI recalculados (bases \"IA/m²\" e \"IA/imóvel\").");
       if (slotAtivo) desenharPlanilha();
     } catch (e) {
       if (e.message === "SEM_BACKEND") {
