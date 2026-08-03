@@ -740,7 +740,8 @@
     caixa: { k: "desconto", asc: false },
   };
   let ultimaListaPlanilha = null; // conjunto filtrado em exibição (p/ IA por lote)
-  const plFiltros = { financiamento: false, garagem: false }; // combináveis entre si
+  // financiamento: 0 = todos, 1 = só quem aceita, -1 = só quem NÃO aceita
+  const plFiltros = { financiamento: 0, garagem: false }; // combináveis entre si
 
   function calcularPlanilha(planilha) {
     const meses = Math.max(1, +$("p-meses").value || 1);
@@ -803,9 +804,11 @@
       .map(v => `<button data-v="${v}" class="${tipoFiltro === v ? "ativa" : ""}">
         ${ROTULO_TIPO[v]} (${v === "" ? todos.length : cont[v]})</button>`).join("") +
       `<span class="sep"></span>
-       <button data-f="financiamento" class="${plFiltros.financiamento ? "ativa" : ""}">💰 Aceita financiamento (${nFin})</button>
+       <button data-f="fin-sim" class="${plFiltros.financiamento === 1 ? "ativa" : ""}">💰 Aceita financiamento (${nFin})</button>
+       <button data-f="fin-nao" class="${plFiltros.financiamento === -1 ? "ativa" : ""}">🚫 Sem financiamento (${tudo.length - nFin})</button>
        <button data-f="garagem" class="${plFiltros.garagem ? "ativa" : ""}">🚗 Com garagem (${nGar})</button>`;
-    if (plFiltros.financiamento) tudo = tudo.filter(d => d.financiamento);
+    if (plFiltros.financiamento === 1) tudo = tudo.filter(d => d.financiamento);
+    if (plFiltros.financiamento === -1) tudo = tudo.filter(d => !d.financiamento);
     if (plFiltros.garagem) tudo = tudo.filter(d => d.vagas > 0);
     if (!tudo.length) {
       $("pl-tiles").innerHTML = `<div class="tile"><div class="rotulo">Sem resultados</div>
@@ -974,7 +977,9 @@
   $("pl-tipos").addEventListener("click", ev => {
     const b = ev.target.closest("button");
     if (!b || !slotAtivo) return;
-    if (b.dataset.f) plFiltros[b.dataset.f] = !plFiltros[b.dataset.f]; // liga/desliga, combinável
+    if (b.dataset.f === "fin-sim") plFiltros.financiamento = plFiltros.financiamento === 1 ? 0 : 1;
+    else if (b.dataset.f === "fin-nao") plFiltros.financiamento = plFiltros.financiamento === -1 ? 0 : -1;
+    else if (b.dataset.f === "garagem") plFiltros.garagem = !plFiltros.garagem;
     else $("p-tipo").value = b.dataset.v;
     desenharPlanilha();
   });
