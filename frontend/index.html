@@ -204,6 +204,13 @@
     font-size: 0.68rem; font-weight: 700; letter-spacing: 0.03em;
     color: var(--accent); background: var(--accent-soft); border: 1px solid var(--border);
   }
+  .filtros-tipo { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
+  .filtros-tipo button {
+    border: 1px solid var(--border); background: var(--page); color: var(--ink-2);
+    font: inherit; font-size: 0.8rem; padding: 3px 12px; border-radius: 999px; cursor: pointer;
+  }
+  .filtros-tipo button:hover { background: var(--accent-soft); color: var(--ink); }
+  .filtros-tipo button.ativa { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 
   tr.detalhe td { background: var(--page); padding: 14px 16px; white-space: normal; }
   .det-grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; text-align: left; }
@@ -298,15 +305,6 @@
       <div class="info">Venda estimada usa o preço de mercado por m² da região (tabela editável, ou estimado pela IA abaixo) quando há área; senão a avaliação. Custos: +15% sobre o lance (+10% em Venda Online/Direta, que não tem leiloeiro), cartório 1,5%, jurídico, desocupação se ocupado, corretagem 6%, IR 15%.</div>
     </div>
 
-    <div class="premissas" style="margin-top:10px">
-      <div class="campo" style="max-width:280px">
-        <label for="p-gemini">Chave da API Gemini — opcional (vazio = usa a chave do servidor do site)</label>
-        <input id="p-gemini" type="password" placeholder="AIza..." autocomplete="off">
-      </div>
-      <button class="botao" id="btn-ia" type="button" style="align-self:center">🤖 Estimar R$/m² com a IA do Google</button>
-      <span class="nota" id="ia-status" style="margin:0; align-self:center"></span>
-    </div>
-
     <div class="tiles" id="pl-tiles"></div>
 
     <div class="grade">
@@ -328,8 +326,18 @@
       <div id="zl-grafico"></div>
     </div>
 
+    <div class="premissas" style="margin-top:12px">
+      <div class="campo" style="max-width:280px">
+        <label for="p-gemini">Chave da API Gemini — opcional (vazio = usa a chave do servidor do site)</label>
+        <input id="p-gemini" type="password" placeholder="AIza..." autocomplete="off">
+      </div>
+      <button class="botao" id="btn-ia" type="button" style="align-self:center">🤖 Estimar R$/m² com a IA do Google</button>
+      <span class="nota" id="ia-status" style="margin:0; align-self:center"></span>
+    </div>
+
     <div class="cartao tabela-cartao">
       <h2 id="pl-titulo">Ranking da sua planilha</h2>
+      <div class="filtros-tipo" id="pl-tipos"></div>
       <p class="nota" id="pl-tabela-nota">Ordenado pelos maiores descontos. Clique no cabeçalho para reordenar e em uma linha para o detalhamento de custos.</p>
       <table>
         <thead><tr id="pl-cabecalho"></tr></thead>
@@ -743,9 +751,11 @@
   function montarColunas(dados) {
     const cols = [
       { k: "id", t: "Lote", esq: true, f: v => v },
+      { k: "bairro", t: "Bairro", esq: true, f: v => v ? titulo(v) : "—" },
       { k: "cidade", t: "Cidade", esq: true, f: (v, d) => (v || "—") + (d && d.zona_leste ? ' <span class="zl-tag">ZL</span>' : "") },
       { k: "tipo", t: "Tipo", esq: true, f: v => v ? cap(v) : "—" },
       { k: "vagas", t: "Garagem", esq: true, f: v => isFinite(v) ? (v > 0 ? "Sim (" + v + ")" : "Não") : "—" },
+      { k: "financiamento", t: "Financ.", esq: true, f: v => v ? "Sim" : "Não" },
       { k: "valor_avaliacao", t: "Avaliação", f: brl },
       { k: "lance_minimo", t: "Lance mín.", f: brl },
       { k: "desconto", t: "Desconto", f: v => pct(v, 1) },
@@ -769,11 +779,20 @@
     const planilha = slots[slotAtivo];
     if (!planilha) return;
     const plOrdem = plOrdens[slotAtivo];
-    let tudo = calcularPlanilha(planilha);
+    const todos = calcularPlanilha(planilha);
 
-    /* filtro por tipo (apartamento/casa/terreno/comercial) */
+    /* filtro por tipo (apartamento/casa/terreno/comercial) + botões com contagem */
     const tipoFiltro = $("p-tipo").value;
-    if (tipoFiltro) tudo = tudo.filter(d => d.tipo_padrao === tipoFiltro);
+    const cont = {};
+    todos.forEach(d => { cont[d.tipo_padrao] = (cont[d.tipo_padrao] || 0) + 1; });
+    const ROTULO_TIPO = { "": "Todos", apartamento: "Apartamentos", casa: "Casas",
+      terreno: "Terrenos", comercial: "Comercial", outros: "Outros" };
+    $("pl-tipos").innerHTML = ["", "apartamento", "casa", "terreno", "comercial", "outros"]
+      .filter(v => v === "" || cont[v])
+      .map(v => `<button data-v="${v}" class="${tipoFiltro === v ? "ativa" : ""}">
+        ${ROTULO_TIPO[v]} (${v === "" ? todos.length : cont[v]})</button>`).join("");
+
+    let tudo = tipoFiltro ? todos.filter(d => d.tipo_padrao === tipoFiltro) : todos;
     if (!tudo.length) {
       $("pl-tiles").innerHTML = `<div class="tile"><div class="rotulo">Sem resultados</div>
         <div class="valor">0</div><div class="apoio">nenhum lote do tipo selecionado nesta planilha</div></div>`;
@@ -937,6 +956,12 @@
     tr.after(det);
   }
 
+  $("pl-tipos").addEventListener("click", ev => {
+    const b = ev.target.closest("button");
+    if (!b || !slotAtivo) return;
+    $("p-tipo").value = b.dataset.v;
+    desenharPlanilha();
+  });
   $("pl-cabecalho").addEventListener("click", ev => {
     const th = ev.target.closest("th");
     if (!th || !slotAtivo) return;
