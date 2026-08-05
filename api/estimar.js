@@ -42,8 +42,40 @@ module.exports = async (req, res) => {
   const soTexto = v => Array.isArray(v) ? v.filter(x => typeof x === "string").slice(0, 150) : [];
   const regioes = soTexto(req.body && req.body.regioes);
   const imoveis = soTexto(req.body && req.body.imoveis);
-  if (!regioes.length && !imoveis.length) {
-    return res.status(400).json({ erro: "envie { regioes: [...] } ou { imoveis: [...] }" });
+  const condominio = typeof (req.body && req.body.condominio) === "string"
+    ? req.body.condominio.slice(0, 300) : "";
+  if (!regioes.length && !imoveis.length && !condominio) {
+    return res.status(400).json({ erro: "envie { regioes: [...] }, { imoveis: [...] } ou { condominio: \"...\" }" });
+  }
+
+  // busca de preço no condomínio usa grounding (pesquisa Google) e devolve texto cru
+  if (condominio) {
+    const promptCond = "Pesquise na internet apartamentos à venda ou vendidos recentemente NO MESMO " +
+      "condomínio/empreendimento deste endereço: " + condominio + ". Encontre o preço mais recente " +
+      '(venda ou anúncio). Responda SOMENTE com JSON: {"valor": número em reais ou null, ' +
+      '"resumo": "frase curta com o que encontrou e a fonte"}.';
+    for (const modelo of MODELOS) {
+      const r = await fetch(
+        "https://generativelanguage.googleapis.com/v1beta/models/" + modelo +
+        ":generateContent?key=" + encodeURIComponent(chave),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: promptCond }] }],
+            tools: [{ google_search: {} }],
+            generationConfig: { temperature: 0.2 },
+          }),
+        },
+      );
+      if (r.status === 404) continue;
+      if (!r.ok) return res.status(502).json({ erro: "Gemini respondeu " + r.status });
+      const j = await r.json();
+      const partes = (j.candidates && j.candidates[0] && j.candidates[0].content &&
+        j.candidates[0].content.parts) || [];
+      return res.status(200).json({ resultado: partes.map(p => p.text || "").join("") });
+    }
+    return res.status(502).json({ erro: "nenhum modelo Gemini disponível" });
   }
 
   const prompt = regioes.length

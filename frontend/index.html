@@ -969,10 +969,60 @@
         <div class="l"><span>IR ganho de capital (${pct(P.ir_ganho_capital, 0)})</span><span>−${brl(d.ir)}</span></div>
         <div class="l"><span><b>Lucro líquido</b></span><span><b class="${d.lucro >= 0 ? "positivo" : "negativo"}">${brl(d.lucro)}</b></span></div>
         <div class="l"><span>ROI / retorno mensal</span><span>${pct(d.roi, 1)} · ${pct(d.retMensal, 2)} a.m.</span></div>
+        <div class="l"><span>Último preço no condomínio</span><span id="cond-${d.id}">${
+          condIA[d.id] ? condIA[d.id]
+          : `<button class="botao btn-cond" data-id="${d.id}" style="padding:2px 10px; font-size:0.78rem">🔎 buscar com IA</button>`
+        }</span></div>
       </div>
     </div></td>`;
     tr.after(det);
   }
+
+  /* busca com IA + Google: preço mais recente no mesmo condomínio/endereço */
+  document.addEventListener("click", async ev => {
+    const b = ev.target.closest(".btn-cond");
+    if (!b || !slotAtivo) return;
+    const id = b.dataset.id;
+    const lote = (slots[slotAtivo].lotes || []).find(l => String(l.id) === id);
+    if (!lote) return;
+    b.disabled = true;
+    b.textContent = "buscando…";
+    const consulta = [lote.tipo || "apartamento", lote.endereco, lote.bairro,
+      lote.cidade + (lote.uf ? "/" + lote.uf : "")].filter(Boolean).join(", ");
+    const prompt = "Pesquise na internet apartamentos à venda ou vendidos recentemente NO MESMO " +
+      "condomínio/empreendimento deste endereço: " + consulta + ". Encontre o preço mais recente " +
+      '(venda ou anúncio). Responda SOMENTE com JSON: {"valor": número em reais ou null, ' +
+      '"resumo": "frase curta com o que encontrou e a fonte"}.';
+    try {
+      const key = $("p-gemini").value.trim();
+      let res;
+      if (key) {
+        res = extrairJSON(await chamarGemini(key, prompt, true));
+      } else {
+        const r = await fetch("api/estimar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ condominio: consulta }),
+        });
+        if (r.status === 404 || r.status === 405 || r.status === 501) {
+          throw new Error("disponível no site na Vercel (ou cole sua chave acima)");
+        }
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.erro || "servidor respondeu " + r.status);
+        res = extrairJSON(j.resultado);
+      }
+      const txt = (res && res.valor > 0 ? brl(res.valor) + " — " : "") +
+        ((res && res.resumo) || "nada encontrado");
+      condIA[id] = txt;
+      localStorage.setItem("cond_ia_v1", JSON.stringify({ dados: condIA, em: new Date().toISOString() }));
+      const alvo = document.getElementById("cond-" + id);
+      if (alvo) alvo.textContent = txt;
+    } catch (e) {
+      b.disabled = false;
+      b.textContent = "🔎 " + (e instanceof TypeError
+        ? "bloqueado nesta prévia — use o site na Vercel" : e.message).slice(0, 70);
+    }
+  });
 
   $("pl-tipos").addEventListener("click", ev => {
     const b = ev.target.closest("button");
@@ -1002,27 +1052,45 @@
     statusIA(Object.keys(precosIA).length + " regiões com preço estimado pela IA (cache deste navegador).");
   }
 
-  async function chamarGemini(key, prompt) {
+  async function chamarGemini(key, prompt, comBusca) {
     let ultimoErro = null;
     for (const modelo of MODELOS_GEMINI) {
+      const corpo = {
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.2 },
+      };
+      // busca no Google (grounding) não aceita resposta JSON forçada
+      if (comBusca) corpo.tools = [{ google_search: {} }];
+      else corpo.generationConfig.responseMimeType = "application/json";
       const r = await fetch(
         "https://generativelanguage.googleapis.com/v1beta/models/" + modelo +
         ":generateContent?key=" + encodeURIComponent(key), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { responseMimeType: "application/json", temperature: 0.2 },
-          }),
+          body: JSON.stringify(corpo),
         });
       if (r.status === 404) { ultimoErro = new Error("modelo " + modelo + " indisponível"); continue; }
       if (!r.ok) throw new Error("Gemini respondeu " + r.status + ": " + (await r.text()).slice(0, 180));
       const j = await r.json();
-      return (j.candidates && j.candidates[0] && j.candidates[0].content &&
-        j.candidates[0].content.parts && j.candidates[0].content.parts[0].text) || "";
+      const partes = (j.candidates && j.candidates[0] && j.candidates[0].content &&
+        j.candidates[0].content.parts) || [];
+      return partes.map(p => p.text || "").join("");
     }
     throw ultimoErro || new Error("nenhum modelo Gemini disponível");
   }
+
+  /* extrai o primeiro JSON de um texto (respostas com busca vêm com prosa junto) */
+  function extrairJSON(t) {
+    const m = String(t).match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+    return JSON.parse(m ? m[0] : t);
+  }
+
+  /* cache das buscas de preço por condomínio */
+  let condIA = {};
+  try {
+    const cc = JSON.parse(localStorage.getItem("cond_ia_v1") || "null");
+    if (cc && cc.dados) condIA = cc.dados;
+  } catch (e) { /* ignora cache corrompido */ }
 
   $("btn-ia").addEventListener("click", async () => {
     const key = $("p-gemini").value.trim();
