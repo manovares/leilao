@@ -350,6 +350,11 @@
     <div class="cartao tabela-cartao">
       <h2 id="pl-titulo">Ranking da sua planilha</h2>
       <div class="filtros-tipo" id="pl-tipos"></div>
+      <div class="campo" style="max-width:340px; margin:0 0 10px">
+        <label for="p-regiao">🔎 Filtrar por região (cidade, bairro ou endereço)</label>
+        <input id="p-regiao" type="text" list="lista-regioes" placeholder="ex.: Itaquera, Mooca, Campinas…" autocomplete="off">
+        <datalist id="lista-regioes"></datalist>
+      </div>
       <p class="nota" id="pl-tabela-nota">Ordenado pelos maiores descontos. Clique no cabeçalho para reordenar e em uma linha para o detalhamento de custos.</p>
       <div class="rolagem">
         <table>
@@ -485,7 +490,7 @@
     const secao = nome in slots ? "planilha" : nome;
     vistas.forEach(v => { $("vista-" + v).hidden = v !== secao; });
     document.querySelectorAll(".aba").forEach(a => a.classList.toggle("ativa", a.dataset.vista === nome));
-    if (secao === "planilha") { slotAtivo = nome; desenharPlanilha(); }
+    if (secao === "planilha") { slotAtivo = nome; montarSugestoesRegiao(); desenharPlanilha(); }
     esconderDica();
     scrollTo({ top: 0 });
   }
@@ -839,6 +844,14 @@
     if (plFiltros.financiamento === 1) tudo = tudo.filter(d => d.financiamento);
     if (plFiltros.financiamento === -1) tudo = tudo.filter(d => !d.financiamento);
     if (plFiltros.garagem) tudo = tudo.filter(d => d.vagas > 0);
+
+    /* filtro por região digitada (cidade, bairro, endereço ou UF) */
+    const termoRegiao = normalizar($("p-regiao").value || "");
+    if (termoRegiao) {
+      tudo = tudo.filter(d => normalizar(
+        (d.cidade || "") + " " + (d.bairro || "") + " " + (d.endereco || "") + " " + (d.uf || "")
+      ).includes(termoRegiao));
+    }
     if (!tudo.length) {
       $("pl-tiles").innerHTML = `<div class="tile"><div class="rotulo">Sem resultados</div>
         <div class="valor">0</div><div class="apoio">nenhum lote do tipo selecionado nesta planilha</div></div>`;
@@ -901,7 +914,8 @@
     const ROTULO_ESCOPO = { zl: " · Zona Leste (SP)", capital: " · Capital SP", estado: " · Estado de SP", brasil: "" };
     plColunas = montarColunas(dados);
     if (!plColunas.some(c => c.k === plOrdem.k)) plOrdem.k = "desconto";
-    $("pl-titulo").textContent = "Ranking — " + ROTULO_SLOT[slotAtivo] + (ROTULO_ESCOPO[escopo] || "");
+    $("pl-titulo").textContent = "Ranking — " + ROTULO_SLOT[slotAtivo] + (ROTULO_ESCOPO[escopo] || "") +
+      (termoRegiao ? ' · região "' + $("p-regiao").value.trim() + '"' : "");
     const porDesconto = [...dados].sort((a, b) => b.desconto - a.desconto);
 
     /* KPIs — o desconto médio só considera lotes com desconto real
@@ -1094,6 +1108,28 @@
       b.textContent = "🔎 " + (e instanceof TypeError
         ? "bloqueado nesta prévia — use o site na Vercel" : e.message).slice(0, 70);
     }
+  });
+
+  /* sugestões do filtro de região: cidades e bairros mais comuns da planilha */
+  let datalistSlot = null;
+  function montarSugestoesRegiao() {
+    if (datalistSlot === slotAtivo || !slots[slotAtivo]) return;
+    datalistSlot = slotAtivo;
+    const freq = new Map();
+    slots[slotAtivo].lotes.forEach(l => {
+      if (l.cidade) freq.set(l.cidade, (freq.get(l.cidade) || 0) + 1000); // cidades primeiro
+      if (l.bairro) freq.set(titulo(l.bairro), (freq.get(titulo(l.bairro)) || 0) + 1);
+    });
+    const opcoes = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 400)
+      .map(([nome]) => `<option value="${nome.replace(/"/g, "&quot;")}"></option>`).join("");
+    $("lista-regioes").innerHTML = opcoes;
+  }
+
+  let regiaoTimer = null;
+  $("p-regiao").addEventListener("input", () => {
+    plLoteSelecionado = null;
+    clearTimeout(regiaoTimer);
+    regiaoTimer = setTimeout(() => { if (slotAtivo && slots[slotAtivo]) desenharPlanilha(); }, 250);
   });
 
   $("pl-tipos").addEventListener("click", ev => {
