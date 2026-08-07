@@ -52,7 +52,8 @@ module.exports = async (req, res) => {
   if (condominio) {
     const promptCond = "Pesquise na internet apartamentos à venda ou vendidos recentemente NO MESMO " +
       "condomínio/empreendimento deste endereço: " + condominio + ". Encontre o preço mais recente " +
-      '(venda ou anúncio). Responda SOMENTE com JSON: {"valor": número em reais ou null, ' +
+      "(venda ou anúncio). IGNORE anúncios de leilão, arremate ou venda judicial — considere apenas " +
+      'o mercado tradicional. Responda SOMENTE com JSON: {"valor": número em reais ou null, ' +
       '"resumo": "frase curta com o que encontrou e a fonte"}.';
     for (const modelo of MODELOS) {
       const r = await fetch(
@@ -78,14 +79,18 @@ module.exports = async (req, res) => {
     return res.status(502).json({ erro: "nenhum modelo Gemini disponível" });
   }
 
+  const SEM_LEILAO = "IMPORTANTE: considere APENAS o mercado tradicional (anúncios e vendas comuns); " +
+    "NÃO use como base preços de imóveis de leilão, arremate ou venda judicial — " +
+    "são descontados e distorcem a referência. ";
   const prompt = regioes.length
     ? "Você é um avaliador imobiliário brasileiro. Estime o preço médio de VENDA por metro " +
       "quadrado (R$/m²) de APARTAMENTOS USADOS em cada região abaixo, em valores atuais e " +
-      'realistas de mercado. Responda SOMENTE com JSON válido: um array de objetos ' +
+      "realistas de mercado. " + SEM_LEILAO +
+      'Responda SOMENTE com JSON válido: um array de objetos ' +
       '{"chave": string, "preco_m2": number}. Não escreva mais nada.\nRegiões:\n- ' +
       regioes.join("\n- ")
     : "Você é um avaliador imobiliário brasileiro. Estime o valor de VENDA de mercado " +
-      "(em reais) de cada imóvel usado abaixo, realista para a localização e o tipo. " +
+      "(em reais) de cada imóvel usado abaixo, realista para a localização e o tipo. " + SEM_LEILAO +
       'Responda SOMENTE com JSON válido: um array de objetos {"id": string, "valor": number}. ' +
       "Não escreva mais nada.\nImóveis:\n- " + imoveis.join("\n- ");
 
