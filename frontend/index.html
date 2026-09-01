@@ -239,6 +239,7 @@
       <button class="aba ativa" data-vista="inicio">Início</button>
       <button class="aba" data-vista="arrematador" id="aba-arrematador" hidden>Planilha Arrematador</button>
       <button class="aba" data-vista="caixa" id="aba-caixa" hidden>Lista Caixa</button>
+      <button class="aba" data-vista="favoritos" id="aba-favoritos" hidden>⭐ Favoritos</button>
       <button class="aba" data-vista="modelo">Exemplo do modelo</button>
     </nav>
   </header>
@@ -312,11 +313,12 @@
         <select id="p-escopo">
           <option value="zl">Zona Leste (SP)</option>
           <option value="capital">Capital — São Paulo</option>
+          <option value="praias">Praias — Litoral SP</option>
           <option value="estado">Estado de SP</option>
-          <option value="brasil" selected>Brasil (todos)</option>
+          <option value="brasil" selected>Todos da planilha</option>
         </select>
       </div>
-      <div class="info">Venda estimada usa o preço de mercado por m² da região (tabela editável, ou estimado pela IA abaixo) quando há área; senão a avaliação. Custos: +15% sobre o lance (+10% em Venda Online/Direta, que não tem leiloeiro), cartório 1,5%, jurídico, desocupação se ocupado, corretagem 6%, IR 15%.</div>
+      <div class="info">A venda estimada vem de anúncios reais dos portais (VivaReal, ZAP, QuintoAndar, Imovelweb, OLX) buscados pela IA — nunca de imóveis de leilão; lotes ainda sem busca usam a avaliação. Custos: +15% sobre o lance (+10% em Venda Online/Direta, sem leiloeiro), cartório 1,5%, jurídico, desocupação se ocupado, corretagem 6%, IR 15%.</div>
     </div>
 
     <div class="tiles" id="pl-tiles"></div>
@@ -345,7 +347,7 @@
         <label for="p-gemini">Chave da API Gemini — opcional (vazio = usa a chave do servidor do site)</label>
         <input id="p-gemini" type="password" placeholder="AIza..." autocomplete="off">
       </div>
-      <button class="botao" id="btn-ia" type="button" style="align-self:center">🤖 Estimar R$/m² com a IA do Google</button>
+      <button class="botao" id="btn-ia" type="button" style="align-self:center">🔎 Buscar preços nos portais com IA (VivaReal, ZAP…)</button>
       <span class="nota" id="ia-status" style="margin:0; align-self:center"></span>
     </div>
 
@@ -493,10 +495,20 @@
   /* duas abas de resultado compartilham a mesma seção, cada uma com seus dados */
   const vistas = ["inicio", "planilha", "modelo"];
   const slots = { arrematador: null, caixa: null };
-  const ROTULO_SLOT = { arrematador: "Planilha Arrematador", caixa: "Lista Caixa (padrão)" };
+  const ROTULO_SLOT = { arrematador: "Planilha Arrematador", caixa: "Lista Caixa (padrão)", favoritos: "⭐ Favoritos" };
   let slotAtivo = null;
+  /* na aba Favoritos, a "planilha" é a união das planilhas carregadas */
+  function planilhaAtiva() {
+    if (slotAtivo === "favoritos") {
+      const lotes = [];
+      if (slots.arrematador) lotes.push(...slots.arrematador.lotes);
+      if (slots.caixa) lotes.push(...slots.caixa.lotes);
+      return lotes.length ? { nomeArquivo: "seus imóveis favoritos", lotes } : null;
+    }
+    return slots[slotAtivo];
+  }
   function mostrarVista(nome) {
-    const secao = nome in slots ? "planilha" : nome;
+    const secao = (nome in slots || nome === "favoritos") ? "planilha" : nome;
     vistas.forEach(v => { $("vista-" + v).hidden = v !== secao; });
     document.querySelectorAll(".aba").forEach(a => a.classList.toggle("ativa", a.dataset.vista === nome));
     if (secao === "planilha") { slotAtivo = nome; montarSugestoesRegiao(); desenharPlanilha(); }
@@ -607,6 +619,11 @@
     return DISTRITOS_ZL.find(d => texto.includes(" " + d + " ")) || "";
   }
 
+  /* cidades do litoral de São Paulo (abrangência "Praias — Litoral SP") */
+  const PRAIAS_SP = new Set(["santos", "praia grande", "guaruja", "sao vicente",
+    "mongagua", "itanhaem", "peruibe", "bertioga", "ubatuba", "caraguatatuba",
+    "sao sebastiao", "ilhabela", "ilha comprida", "iguape", "cananeia"]);
+
   /* tipos variados ("prédio", "galpão", "sobrado"...) -> 4 tipos padrão */
   const MAPA_TIPO = { predio: "comercial", galpao: "comercial", sala: "comercial",
     loja: "comercial", sobrado: "casa", gleba: "terreno", "gleba urbana": "terreno",
@@ -618,53 +635,21 @@
     return n ? "outros" : "";
   }
 
-  /* preço de mercado de referência (R$/m² de venda) — EDITE AQUI para a
-     sua realidade; usado no lugar da avaliação da Caixa quando há área */
-  const PRECO_M2_ZL = { "tatuape": 9500, "analia franco": 9500, "mooca": 9000,
-    "belem": 8800, "agua rasa": 8500, "vila prudente": 8000, "carrao": 7800,
-    "vila formosa": 7500, "vila matilde": 7200, "sao lucas": 7000, "penha": 7000,
-    "aricanduva": 6500, "vila esperanca": 6500, "cangaiba": 6000, "ponte rasa": 6000,
-    "vila antonieta": 6000, "vila re": 6000, "burgo paulista": 5800, "sapopemba": 5800,
-    "cidade lider": 5800, "itaquera": 5800, "artur alvim": 5600, "ermelino matarazzo": 5500,
-    "jose bonifacio": 5500, "parque do carmo": 5500, "sao mateus": 5500,
-    "teotonio vilela": 5500, "cidade a e carvalho": 5500, "a e carvalho": 5500,
-    "sao miguel": 5200, "sao rafael": 5200, "vila jacui": 5000, "iguatemi": 5000,
-    "itaim paulista": 4900, "vila curuca": 4800, "jardim helena": 4800,
-    "guaianases": 4800, "guaianazes": 4800, "lajeado": 4600, "cidade tiradentes": 4300 };
-  const PRECO_M2_CIDADE = { "sao paulo": 10500, "campinas": 7500, "ribeirao preto": 6500,
-    "sorocaba": 6000, "sao jose dos campos": 8000, "sao jose do rio preto": 6000,
-    "jundiai": 7500, "piracicaba": 5500, "santos": 9500, "guarulhos": 6500,
-    "osasco": 7000, "santo andre": 7500, "sao bernardo do campo": 7500, "maua": 5500,
-    "diadema": 6000, "marilia": 4500, "bauru": 5000, "aracatuba": 4500,
-    "presidente prudente": 4500, "birigui": 3800, "itupeva": 5500, "pelotas": 4500,
-    "rio de janeiro": 9000, "belo horizonte": 7500, "curitiba": 7500,
-    "porto alegre": 7000, "salvador": 5500, "goiania": 5500 };
-  const FATOR_TIPO_M2 = { apartamento: 1.0, casa: 0.9 };
-
-  /* preços vindos da IA (Gemini) sobrepõem a tabela fixa; cache no navegador */
-  let precosIA = {};   // R$/m² por região
-  let valoresIA = {};  // valor total por lote (avaliação individual da IA)
+  /* Preço de venda por anúncios reais dos portais (VivaReal, ZAP, QuintoAndar,
+     Imovelweb, OLX), buscados pela IA — nunca imóveis de leilão.
+     Enquanto um lote não tem preço dos portais, o cálculo usa a avaliação. */
+  let valoresIA = {};  // valor de venda por lote, vindo dos portais
+  let fontesIA = {};   // resumo da referência encontrada (anúncio/site)
   try {
-    const c = JSON.parse(localStorage.getItem("precos_ia_v1") || "null");
-    if (c && c.precos) precosIA = c.precos;
     const v = JSON.parse(localStorage.getItem("valores_ia_v1") || "null");
     if (v && v.valores) valoresIA = v.valores;
+    if (v && v.fontes) fontesIA = v.fontes;
   } catch (e) { /* cache corrompido: ignora */ }
 
-  function chaveRegiao(l) {
-    return l.distrito_zl ? "zl:" + l.distrito_zl : "cid:" + normalizar(l.cidade);
-  }
-
   function estimarMercado(l) {
-    // 1º: avaliação individual do lote feita pela IA (funciona mesmo sem área)
-    if (valoresIA[l.id] > 0) return { valor: valoresIA[l.id], fonte: "IA/imóvel" };
-    const fator = FATOR_TIPO_M2[l.tipo_padrao];
-    if (!fator || !(l.area > 0)) return { valor: NaN, fonte: "" };
-    const chave = chaveRegiao(l);
-    if (precosIA[chave] > 0) return { valor: l.area * precosIA[chave] * fator, fonte: "IA/m²" };
-    const pm2 = (l.distrito_zl && PRECO_M2_ZL[l.distrito_zl]) ||
-      PRECO_M2_CIDADE[normalizar(l.cidade)] || NaN;
-    return pm2 ? { valor: l.area * pm2 * fator, fonte: "mercado/m²" } : { valor: NaN, fonte: "" };
+    const v = valoresIA[String(l.id)];
+    if (v > 0) return { valor: v, fonte: "portais" };
+    return { valor: NaN, fonte: "" };
   }
 
   /* "02/08/2026 01:35" -> timestamp para ordenar */
@@ -767,6 +752,7 @@
   const plOrdens = {
     arrematador: { k: "desconto", asc: false },
     caixa: { k: "desconto", asc: false },
+    favoritos: { k: "desconto", asc: false },
   };
   let ultimaListaPlanilha = null; // conjunto filtrado em exibição (p/ IA por lote)
   // financiamento: 0 = todos, 1 = só quem aceita, -1 = só quem NÃO aceita
@@ -824,7 +810,7 @@
     b.textContent = favoritos.has(id) ? "⭐" : "☆";
     const chip = document.querySelector('#pl-tipos button[data-f="favoritos"]');
     if (chip) chip.textContent = "⭐ Favoritos (" + favoritos.size + ")";
-    if (plFiltros.favoritos) desenharPlanilha();
+    if (plFiltros.favoritos || slotAtivo === "favoritos") desenharPlanilha();
     sincronizarFavoritos(false);
   });
 
@@ -885,10 +871,23 @@
   const MAX_LINHAS = 500;
 
   function desenharPlanilha() {
-    const planilha = slots[slotAtivo];
+    const planilha = planilhaAtiva();
     if (!planilha) return;
+    const ehVistaFav = slotAtivo === "favoritos";
     const plOrdem = plOrdens[slotAtivo];
-    const todos = calcularPlanilha(planilha);
+    let todos = calcularPlanilha(planilha);
+    if (ehVistaFav) todos = todos.filter(d => favoritos.has(String(d.id)));
+    if (ehVistaFav && !todos.length) {
+      $("pl-titulo").textContent = "⭐ Favoritos";
+      $("pl-tipos").innerHTML = "";
+      $("pl-tiles").innerHTML = `<div class="tile"><div class="rotulo">Sem favoritos ainda</div>
+        <div class="valor">☆</div><div class="apoio">clique na estrela de qualquer lote no ranking para salvá-lo aqui</div></div>`;
+      $("pl-grafico").innerHTML = ""; $("zl-grafico").innerHTML = "";
+      $("zl-nota").textContent = ""; $("pl-melhor").innerHTML = "";
+      $("pl-melhor-nota").textContent = ""; $("pl-corpo").innerHTML = ""; $("pl-cabecalho").innerHTML = "";
+      $("pl-tabela-nota").textContent = "";
+      return;
+    }
 
     /* filtro por tipo (apartamento/casa/terreno/comercial) + botões com contagem */
     const tipoFiltro = $("p-tipo").value;
@@ -962,13 +961,16 @@
       if (linha) selecionarLote(zlTop[+linha.dataset.ix].id);
     };
 
-    /* abrangência: Zona Leste -> Capital -> Estado de SP -> Brasil */
+    /* abrangência: Zona Leste -> Capital -> Praias (litoral SP) -> Estado -> todos */
     const escopo = $("p-escopo").value;
     const ehCapital = d => normalizar(d.cidade).includes("sao paulo");
     const ehEstadoSP = d => normalizar(d.uf || "") === "sp" || (!d.uf && ehCapital(d));
+    const ehPraia = d => PRAIAS_SP.has(normalizar(d.cidade)) &&
+      (normalizar(d.uf || "") === "sp" || !d.uf);
     let dados = tudo;
     if (escopo === "zl") dados = dadosZL;
     else if (escopo === "capital") dados = tudo.filter(ehCapital);
+    else if (escopo === "praias") dados = tudo.filter(ehPraia);
     else if (escopo === "estado") dados = tudo.filter(ehEstadoSP);
     if (!dados.length) {
       $("pl-tiles").innerHTML = `<div class="tile"><div class="rotulo">Sem resultados</div>
@@ -979,7 +981,7 @@
     }
     ultimaListaPlanilha = dados;
 
-    const ROTULO_ESCOPO = { zl: " · Zona Leste (SP)", capital: " · Capital SP", estado: " · Estado de SP", brasil: "" };
+    const ROTULO_ESCOPO = { zl: " · Zona Leste (SP)", capital: " · Capital SP", praias: " · Praias SP", estado: " · Estado de SP", brasil: "" };
     plColunas = montarColunas(dados);
     if (!plColunas.some(c => c.k === plOrdem.k)) plOrdem.k = "desconto";
     $("pl-titulo").textContent = "Ranking — " + ROTULO_SLOT[slotAtivo] + (ROTULO_ESCOPO[escopo] || "") +
@@ -1034,7 +1036,7 @@
       " — maior desconto da planilha (" + (m.ocupado ? "ocupado" : "sem indicação de ocupação") + ")";
     $("pl-melhor").innerHTML = `
       <div class="l"><span>Valor de avaliação</span><span>${brl(m.valor_avaliacao)}</span></div>
-      ${m.mercado_estimado > 0 ? `<div class="l"><span>Mercado estimado (R$/m²)</span><span>${brl(m.mercado_estimado)}</span></div>` : ""}
+      ${m.mercado_estimado > 0 ? `<div class="l"><span>Mercado (anúncios dos portais)</span><span>${brl(m.mercado_estimado)}</span></div>` : ""}
       <div class="l"><span>Lance mínimo</span><span>${brl(m.lance_minimo)} <b>(−${pct(m.desconto, 1)})</b></span></div>
       <div class="l"><span>Custos extras (+${Math.round(m.extrasPct * 100)}%${m.semLeiloeiro ? ", sem leiloeiro" : ""})</span><span>${brl(m.extras)}</span></div>
       <div class="l"><span>Cartório + jurídico${m.ocupado ? " + desocupação" : ""}</span><span>${brl(m.cartorio + P.custo_juridico_fixo + m.desocupacao)}</span></div>
@@ -1117,7 +1119,8 @@
         <div class="l"><span><b>Investimento total</b></span><span><b>${brl(d.investimento)}</b></span></div>
       </div>
       <div><h3>Resultado estimado</h3>
-        ${d.mercado_estimado > 0 ? `<div class="l"><span>Valor de mercado (R$/m² da região)</span><span>${brl(d.mercado_estimado)}</span></div>` : ""}
+        ${d.mercado_estimado > 0 ? `<div class="l"><span>Valor de mercado (anúncios dos portais)</span><span>${brl(d.mercado_estimado)}</span></div>` : ""}
+        ${fontesIA[String(d.id)] ? `<div class="l"><span>Referência dos portais</span><span>${fontesIA[String(d.id)]}</span></div>` : ""}
         <div class="l"><span>Venda estimada (base: ${d.fonte_venda})</span><span>${brl(d.venda)}</span></div>
         <div class="l"><span>Corretagem (${pct(P.corretagem_venda, 0)})</span><span>−${brl(d.corretagem)}</span></div>
         <div class="l"><span>IR ganho de capital (${pct(P.ir_ganho_capital, 0)})</span><span>−${brl(d.ir)}</span></div>
@@ -1137,7 +1140,7 @@
     const b = ev.target.closest(".btn-cond");
     if (!b || !slotAtivo) return;
     const id = b.dataset.id;
-    const lote = (slots[slotAtivo].lotes || []).find(l => String(l.id) === id);
+    const lote = ((planilhaAtiva() || {}).lotes || []).find(l => String(l.id) === id);
     if (!lote) return;
     b.disabled = true;
     b.textContent = "buscando…";
@@ -1182,10 +1185,10 @@
   /* sugestões do filtro de região: cidades e bairros mais comuns da planilha */
   let datalistSlot = null;
   function montarSugestoesRegiao() {
-    if (datalistSlot === slotAtivo || !slots[slotAtivo]) return;
+    if (datalistSlot === slotAtivo || !planilhaAtiva()) return;
     datalistSlot = slotAtivo;
     const freq = new Map();
-    slots[slotAtivo].lotes.forEach(l => {
+    planilhaAtiva().lotes.forEach(l => {
       if (l.cidade) freq.set(l.cidade, (freq.get(l.cidade) || 0) + 1000); // cidades primeiro
       if (l.bairro) freq.set(titulo(l.bairro), (freq.get(titulo(l.bairro)) || 0) + 1);
     });
@@ -1231,8 +1234,8 @@
   const MODELOS_GEMINI = ["gemini-2.5-flash", "gemini-3-flash-preview", "gemini-2.0-flash", "gemini-1.5-flash"];
   $("p-gemini").value = localStorage.getItem("gemini_key") || "";
   const statusIA = msg => { $("ia-status").textContent = msg; };
-  if (Object.keys(precosIA).length) {
-    statusIA(Object.keys(precosIA).length + " regiões com preço estimado pela IA (cache deste navegador).");
+  if (Object.keys(valoresIA).length) {
+    statusIA(Object.keys(valoresIA).length + " lotes com preço dos portais salvos neste navegador.");
   }
 
   async function chamarGemini(key, prompt, comBusca) {
@@ -1277,90 +1280,75 @@
 
   $("btn-ia").addEventListener("click", async () => {
     const key = $("p-gemini").value.trim();
-    const planilha = slots[slotAtivo] || slots.arrematador || slots.caixa;
-    if (!planilha) return statusIA("Envie uma planilha primeiro.");
+    const planilha = planilhaAtiva();
+    if (!planilha || !planilha.lotes.length) return statusIA("Envie uma planilha primeiro.");
     if (key) localStorage.setItem("gemini_key", key);
 
-    const grupos = new Map();
-    planilha.lotes.forEach(l => {
-      if (!FATOR_TIPO_M2[l.tipo_padrao] || !(l.area > 0)) return;
-      const ch = chaveRegiao(l);
-      if (!grupos.has(ch)) grupos.set(ch, l.distrito_zl
-        ? 'chave "' + ch + '": distrito ' + l.distrito_zl + ", Zona Leste, São Paulo/SP"
-        : 'chave "' + ch + '": cidade de ' + l.cidade + (l.uf ? "/" + l.uf : ""));
-    });
-    const linhas = [...grupos.values()].slice(0, 150);
-    if (!linhas.length) return statusIA("Nenhum lote com área conhecida para estimar.");
-    statusIA("Consultando a IA do Google para " + linhas.length + " regiões…");
-
-    const prompt = "Você é um avaliador imobiliário brasileiro. Estime o preço médio de VENDA por metro quadrado (R$/m²) de APARTAMENTOS USADOS em cada região abaixo, em valores atuais e realistas de mercado. " +
-      "IMPORTANTE: considere APENAS o mercado tradicional (anúncios e vendas comuns); NÃO use como base preços de imóveis de leilão, arremate ou venda judicial — são descontados e distorcem a referência. " +
-      'Responda SOMENTE com JSON válido: um array de objetos {"chave": string, "preco_m2": number}. Não escreva mais nada.\nRegiões:\n- ' +
-      linhas.join("\n- ");
-    /* helper: envia um prompt pela chave do visitante OU pelo backend do site */
-    async function consultarIA(corpo, promptDireto) {
-      if (key) return JSON.parse(await chamarGemini(key, promptDireto));
+    /* consulta os portais para UM imóvel, pela chave do visitante ou pelo backend */
+    async function consultarPortais(descricao, promptDireto) {
+      if (key) return await chamarGemini(key, promptDireto, true);
       const r = await fetch("api/estimar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(corpo),
+        body: JSON.stringify({ portal: descricao }),
       });
       if (r.status === 404 || r.status === 405 || r.status === 501) throw new Error("SEM_BACKEND");
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.erro || "servidor respondeu " + r.status);
-      return j.precos;
+      return j.resultado;
     }
 
-    try {
-      /* etapa 1: preço por m² de cada região (1 chamada) */
-      const arr = await consultarIA({ regioes: linhas }, prompt);
-      let n = 0;
-      arr.forEach(o => {
-        if (o && o.chave && o.preco_m2 > 500 && o.preco_m2 < 60000) { precosIA[o.chave] = o.preco_m2; n++; }
-      });
-      localStorage.setItem("precos_ia_v1", JSON.stringify({ precos: precosIA, em: new Date().toISOString() }));
-      if (slotAtivo) desenharPlanilha();
+    /* prioriza os lotes em exibição (filtros atuais) sem preço dos portais,
+       do maior desconto para o menor — até 20 por clique */
+    const base = (ultimaListaPlanilha && ultimaListaPlanilha.length)
+      ? ultimaListaPlanilha : planilha.lotes;
+    const alvo = [...base]
+      .filter(d => !(valoresIA[String(d.id)] > 0) && d.valor_avaliacao > 0)
+      .sort((a, b) => (b.desconto || 0) - (a.desconto || 0))
+      .slice(0, 20);
+    if (!alvo.length) {
+      return statusIA("Todos os lotes em exibição já têm preço dos portais ✓ — mude os filtros para buscar outros.");
+    }
 
-      /* etapa 2: lotes em exibição que continuam sem valor de mercado
-         (ex.: sem área na planilha) — a IA avalia cada imóvel pelo endereço */
-      const alvo = (ultimaListaPlanilha || [])
-        .filter(d => !(estimarMercado(d).valor > 0) && d.valor_avaliacao > 0)
-        .slice(0, 120);
-      let nLotes = 0;
-      for (let i = 0; i < alvo.length; i += 40) {
-        statusIA("Regiões ok ✓ — avaliando lotes sem área pelo endereço… " +
-          Math.min(i + 40, alvo.length) + "/" + alvo.length);
-        const chunk = alvo.slice(i, i + 40);
-        const linhasLotes = chunk.map(d =>
-          'id "' + d.id + '": ' + (d.tipo || "imóvel") +
-          (d.endereco ? ", " + d.endereco : "") +
-          (d.bairro ? ", " + d.bairro : "") +
-          ", " + d.cidade + (d.uf ? "/" + d.uf : "") +
-          (d.area > 0 ? ", " + d.area + " m²" : "") +
-          (d.quartos > 0 ? ", " + d.quartos + " quarto(s)" : ""));
-        const promptLotes =
-          "Você é um avaliador imobiliário brasileiro. Estime o valor de VENDA de mercado " +
-          "(em reais) de cada imóvel usado abaixo, realista para a localização e o tipo. " +
-          "IMPORTANTE: use como referência apenas o mercado tradicional; NÃO baseie os valores em " +
-          "imóveis de leilão, arremate ou venda judicial — são descontados e distorcem a referência. " +
-          'Responda SOMENTE com JSON válido: um array de objetos {"id": string, "valor": number}. ' +
-          "Não escreva mais nada.\nImóveis:\n- " + linhasLotes.join("\n- ");
-        const arr2 = await consultarIA({ imoveis: linhasLotes }, promptLotes);
-        arr2.forEach(o => {
-          if (o && o.id && o.valor > 10000 && o.valor < 100000000) { valoresIA[String(o.id).trim()] = o.valor; nLotes++; }
-        });
+    let nOk = 0;
+    try {
+      for (let i = 0; i < alvo.length; i++) {
+        const d = alvo[i];
+        statusIA("Buscando anúncios reais nos portais (VivaReal, ZAP, QuintoAndar…): " +
+          (i + 1) + "/" + alvo.length + "…");
+        const descricao = [(d.tipo || "imóvel"), d.endereco, d.bairro,
+          d.cidade + (d.uf ? "/" + d.uf : ""),
+          d.area > 0 ? d.area + " m²" : "", d.quartos > 0 ? d.quartos + " quarto(s)" : ""]
+          .filter(Boolean).join(", ");
+        const prompt = "Pesquise anúncios de VENDA de imóveis usados nos portais brasileiros " +
+          "vivareal.com.br, zapimoveis.com.br, quintoandar.com.br, imovelweb.com.br e olx.com.br, " +
+          "semelhantes a este (mesmo bairro ou condomínio, tipo e tamanho parecidos): " + descricao + ". " +
+          "IGNORE COMPLETAMENTE qualquer anúncio de leilão, arremate ou venda judicial publicado nesses sites. " +
+          "Com base apenas nos anúncios comuns encontrados, estime o valor de venda deste imóvel. " +
+          'Responda SOMENTE com JSON: {"valor": número em reais ou null, ' +
+          '"resumo": "frase curta com os anúncios usados de referência e o portal"}.';
+        try {
+          const res = extrairJSON(await consultarPortais(descricao, prompt));
+          if (res && res.valor > 10000 && res.valor < 100000000) {
+            valoresIA[String(d.id)] = res.valor;
+            if (res.resumo) fontesIA[String(d.id)] = String(res.resumo).slice(0, 300);
+            nOk++;
+          }
+        } catch (eLote) {
+          if (eLote.message === "SEM_BACKEND" || eLote instanceof TypeError) throw eLote;
+          /* erro pontual em um lote: segue para o próximo */
+        }
       }
-      if (nLotes) {
-        localStorage.setItem("valores_ia_v1", JSON.stringify({ valores: valoresIA, em: new Date().toISOString() }));
-      }
-      statusIA(n + " regiões" + (nLotes ? " + " + nLotes + " lotes avaliados individualmente" : "") +
-        " pela IA ✓ — venda estimada e ROI recalculados (bases \"IA/m²\" e \"IA/imóvel\").");
-      if (slotAtivo) desenharPlanilha();
+      localStorage.setItem("valores_ia_v1",
+        JSON.stringify({ valores: valoresIA, fontes: fontesIA, em: new Date().toISOString() }));
+      statusIA(nOk + " de " + alvo.length + " lotes com preço dos portais ✓ — venda e ROI " +
+        "recalculados (base \"portais\"). Clique de novo para buscar os próximos.");
+      desenharPlanilha();
     } catch (e) {
       if (e.message === "SEM_BACKEND") {
         statusIA("Este endereço não tem o backend da IA. No site na Vercel com a variável GEMINI_API_KEY configurada, qualquer visitante usa sem chave — ou cole a sua chave no campo ao lado.");
       } else if (e instanceof TypeError) {
-        statusIA("Esta prévia hospedada bloqueia chamadas externas. No site publicado na Vercel a IA funciona para qualquer visitante.");
+        statusIA("Esta prévia hospedada bloqueia chamadas externas. No site publicado na Vercel a busca nos portais funciona para qualquer visitante.");
       } else {
         statusIA("Erro: " + e.message);
       }
@@ -1391,6 +1379,8 @@
         const resultado = analisarPlanilha(texto, f.name);
         slots[resultado.formato] = resultado;
         $("aba-" + resultado.formato).hidden = false;
+        $("aba-favoritos").hidden = false;
+        plLoteSelecionado = null;
         mostrarVista(resultado.formato);
       } catch (e) {
         erro.innerHTML = "⚠️ " + e.message;

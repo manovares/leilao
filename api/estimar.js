@@ -44,17 +44,27 @@ module.exports = async (req, res) => {
   const imoveis = soTexto(req.body && req.body.imoveis);
   const condominio = typeof (req.body && req.body.condominio) === "string"
     ? req.body.condominio.slice(0, 300) : "";
-  if (!regioes.length && !imoveis.length && !condominio) {
-    return res.status(400).json({ erro: "envie { regioes: [...] }, { imoveis: [...] } ou { condominio: \"...\" }" });
+  const portal = typeof (req.body && req.body.portal) === "string"
+    ? req.body.portal.slice(0, 300) : "";
+  if (!regioes.length && !imoveis.length && !condominio && !portal) {
+    return res.status(400).json({ erro: "envie { regioes }, { imoveis }, { condominio } ou { portal }" });
   }
 
-  // busca de preço no condomínio usa grounding (pesquisa Google) e devolve texto cru
-  if (condominio) {
-    const promptCond = "Pesquise na internet apartamentos à venda ou vendidos recentemente NO MESMO " +
-      "condomínio/empreendimento deste endereço: " + condominio + ". Encontre o preço mais recente " +
-      "(venda ou anúncio). IGNORE anúncios de leilão, arremate ou venda judicial — considere apenas " +
-      'o mercado tradicional. Responda SOMENTE com JSON: {"valor": número em reais ou null, ' +
-      '"resumo": "frase curta com o que encontrou e a fonte"}.';
+  // buscas com grounding (pesquisa Google) devolvem texto cru para o front
+  if (condominio || portal) {
+    const promptCond = condominio
+      ? "Pesquise na internet apartamentos à venda ou vendidos recentemente NO MESMO " +
+        "condomínio/empreendimento deste endereço: " + condominio + ". Encontre o preço mais recente " +
+        "(venda ou anúncio). IGNORE anúncios de leilão, arremate ou venda judicial — considere apenas " +
+        'o mercado tradicional. Responda SOMENTE com JSON: {"valor": número em reais ou null, ' +
+        '"resumo": "frase curta com o que encontrou e a fonte"}.'
+      : "Pesquise anúncios de VENDA de imóveis usados nos portais brasileiros vivareal.com.br, " +
+        "zapimoveis.com.br, quintoandar.com.br, imovelweb.com.br e olx.com.br, semelhantes a este " +
+        "(mesmo bairro ou condomínio, tipo e tamanho parecidos): " + portal + ". " +
+        "IGNORE COMPLETAMENTE qualquer anúncio de leilão, arremate ou venda judicial publicado nesses sites. " +
+        "Com base apenas nos anúncios comuns encontrados, estime o valor de venda deste imóvel. " +
+        'Responda SOMENTE com JSON: {"valor": número em reais ou null, ' +
+        '"resumo": "frase curta com os anúncios usados de referência e o portal"}.';
     for (const modelo of MODELOS) {
       const r = await fetch(
         "https://generativelanguage.googleapis.com/v1beta/models/" + modelo +
