@@ -1231,38 +1231,78 @@
   /* ============ R$/m² estimado pela IA do Google (Gemini) ============ */
   /* A chave fica SÓ no seu navegador (localStorage) e as chamadas vão
      direto para a API do Google — nada passa por outro servidor. */
-  const MODELOS_GEMINI = ["gemini-2.5-flash", "gemini-3-flash-preview", "gemini-2.0-flash", "gemini-1.5-flash"];
+  /* Os modelos do Google mudam de nome com o tempo: tenta os nomes fixos,
+     e se nenhum existir descobre os disponíveis na própria API da chave. */
+  const MODELOS_GEMINI = ["gemini-flash-latest", "gemini-3.8-flash",
+    "gemini-3.5-flash-lite", "gemini-3-flash", "gemini-2.5-flash"];
+  let modelosDescobertos = null;
+
+  async function descobrirModelosGemini(key) {
+    if (modelosDescobertos) return modelosDescobertos;
+    try {
+      const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=" + encodeURIComponent(key));
+      if (!r.ok) return [];
+      const j = await r.json();
+      const nomes = (j.models || [])
+        .filter(m => (m.supportedGenerationMethods || []).includes("generateContent"))
+        .map(m => String(m.name || "").replace("models/", ""))
+        .filter(n => n.includes("flash") && !/image|tts|live|audio|embedding|nano|banana/.test(n));
+      const versao = n => parseFloat((n.match(/(\d+(?:\.\d+)?)/) || [0, 0])[1]) || 0;
+      nomes.sort((a, b) => versao(b) - versao(a));
+      modelosDescobertos = nomes.slice(0, 6);
+      return modelosDescobertos;
+    } catch (e) { return []; }
+  }
+
+  async function gerarGemini(key, modelo, prompt, comBusca) {
+    const corpo = { contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.2 } };
+    if (comBusca) corpo.tools = [{ google_search: {} }];
+    else corpo.generationConfig.responseMimeType = "application/json";
+    const r = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/" + modelo +
+      ":generateContent?key=" + encodeURIComponent(key), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(corpo),
+      });
+    if (!r.ok) {
+      const e = new Error("Gemini (" + modelo + ") respondeu " + r.status + ": " + (await r.text()).slice(0, 140));
+      e.status = r.status;
+      throw e;
+    }
+    const j = await r.json();
+    const partes = (j.candidates && j.candidates[0] && j.candidates[0].content &&
+      j.candidates[0].content.parts) || [];
+    return partes.map(p => p.text || "").join("");
+  }
+
+  async function chamarGemini(key, prompt, comBusca) {
+    const lista = [...new Set([...MODELOS_GEMINI, ...(await descobrirModelosGemini(key))])];
+    let ultimoErro = null;
+    for (const modelo of lista) {
+      try {
+        return await gerarGemini(key, modelo, prompt, comBusca);
+      } catch (e) {
+        ultimoErro = e;
+        if (e.status === 404 || e.status === 429) continue; // modelo indisponível/cota: próximo
+        if (comBusca) {
+          // a pesquisa Google falhou: tenta o mesmo modelo sem busca
+          try {
+            return await gerarGemini(key, modelo +
+              "", prompt + " (Não foi possível pesquisar na internet: estime pelo seu conhecimento do mercado local e diga no resumo que é estimativa sem busca.)", false);
+          } catch (e2) {
+            ultimoErro = e2;
+            if (e2.status === 404 || e2.status === 429) continue;
+          }
+        }
+      }
+    }
+    throw ultimoErro || new Error("nenhum modelo Gemini disponível");
+  }
   $("p-gemini").value = localStorage.getItem("gemini_key") || "";
   const statusIA = msg => { $("ia-status").textContent = msg; };
   if (Object.keys(valoresIA).length) {
     statusIA(Object.keys(valoresIA).length + " lotes com preço dos portais salvos neste navegador.");
-  }
-
-  async function chamarGemini(key, prompt, comBusca) {
-    let ultimoErro = null;
-    for (const modelo of MODELOS_GEMINI) {
-      const corpo = {
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.2 },
-      };
-      // busca no Google (grounding) não aceita resposta JSON forçada
-      if (comBusca) corpo.tools = [{ google_search: {} }];
-      else corpo.generationConfig.responseMimeType = "application/json";
-      const r = await fetch(
-        "https://generativelanguage.googleapis.com/v1beta/models/" + modelo +
-        ":generateContent?key=" + encodeURIComponent(key), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(corpo),
-        });
-      if (r.status === 404) { ultimoErro = new Error("modelo " + modelo + " indisponível"); continue; }
-      if (!r.ok) throw new Error("Gemini respondeu " + r.status + ": " + (await r.text()).slice(0, 180));
-      const j = await r.json();
-      const partes = (j.candidates && j.candidates[0] && j.candidates[0].content &&
-        j.candidates[0].content.parts) || [];
-      return partes.map(p => p.text || "").join("");
-    }
-    throw ultimoErro || new Error("nenhum modelo Gemini disponível");
   }
 
   /* extrai o primeiro JSON de um texto (respostas com busca vêm com prosa junto) */
@@ -1311,6 +1351,7 @@
     }
 
     let nOk = 0;
+    let ultimoErroLote = null;
     try {
       for (let i = 0; i < alvo.length; i++) {
         const d = alvo[i];
@@ -1336,13 +1377,19 @@
           }
         } catch (eLote) {
           if (eLote.message === "SEM_BACKEND" || eLote instanceof TypeError) throw eLote;
-          /* erro pontual em um lote: segue para o próximo */
+          ultimoErroLote = eLote; // erro pontual em um lote: segue para o próximo
         }
       }
       localStorage.setItem("valores_ia_v1",
         JSON.stringify({ valores: valoresIA, fontes: fontesIA, em: new Date().toISOString() }));
-      statusIA(nOk + " de " + alvo.length + " lotes com preço dos portais ✓ — venda e ROI " +
-        "recalculados (base \"portais\"). Clique de novo para buscar os próximos.");
+      if (nOk === 0) {
+        statusIA("Nenhum lote atualizado — " +
+          (ultimoErroLote ? "erro: " + String(ultimoErroLote.message).slice(0, 160) : "a IA não encontrou referências") +
+          ". Enquanto isso, a venda estimada usa a avaliação da Caixa.");
+      } else {
+        statusIA(nOk + " de " + alvo.length + " lotes com preço dos portais ✓ — venda e ROI " +
+          "recalculados (base \"portais\"). Clique de novo para buscar os próximos.");
+      }
       desenharPlanilha();
     } catch (e) {
       if (e.message === "SEM_BACKEND") {
