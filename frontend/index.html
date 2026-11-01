@@ -348,6 +348,7 @@
         <input id="p-gemini" type="password" placeholder="AIza..." autocomplete="off">
       </div>
       <button class="botao" id="btn-ia" type="button" style="align-self:center">🔎 Buscar preços nos portais com IA (VivaReal, ZAP…)</button>
+      <button class="botao" id="btn-diag" type="button" style="align-self:center; font-size:0.8rem">🩺 testar conexão da IA</button>
       <span class="nota" id="ia-status" style="margin:0; align-self:center"></span>
     </div>
 
@@ -1234,7 +1235,7 @@
   /* Os modelos do Google mudam de nome com o tempo: tenta os nomes fixos,
      e se nenhum existir descobre os disponíveis na própria API da chave. */
   const MODELOS_GEMINI = ["gemini-flash-latest", "gemini-3.8-flash",
-    "gemini-3.5-flash-lite", "gemini-3-flash", "gemini-2.5-flash"];
+    "gemini-3.5-flash", "gemini-3-flash-preview", "gemini-3.5-flash-lite"];
   let modelosDescobertos = null;
 
   async function descobrirModelosGemini(key) {
@@ -1285,6 +1286,7 @@
       } catch (e) {
         ultimoErro = e;
         if (e.status === 404 || e.status === 429) continue; // modelo indisponível/cota: próximo
+        if (comBusca && e.status === 400) continue; // modelo sem suporte à busca: próximo
         if (comBusca) {
           // a pesquisa Google falhou: tenta o mesmo modelo sem busca
           try {
@@ -1317,6 +1319,40 @@
     const cc = JSON.parse(localStorage.getItem("cond_ia_v1") || "null");
     if (cc && cc.dados) condIA = cc.dados;
   } catch (e) { /* ignora cache corrompido */ }
+
+  /* diagnóstico: mostra na tela o que o servidor consegue fazer com a IA */
+  $("btn-diag").addEventListener("click", async () => {
+    statusIA("Testando a conexão da IA…");
+    const key = $("p-gemini").value.trim();
+    try {
+      if (key) {
+        // teste direto com a chave do visitante
+        let ger = "ok", busca = "ok (com pesquisa Google)";
+        try { await chamarGemini(key, 'Responda SOMENTE com o JSON {"ok": true}', false); }
+        catch (e) { ger = String(e.message).slice(0, 140); }
+        try { await chamarGemini(key, 'Pesquise a cotação do dólar e responda SOMENTE {"ok": true}', true); }
+        catch (e) { busca = String(e.message).slice(0, 140); }
+        statusIA("Chave do navegador → geração: " + ger + " | busca: " + busca);
+      } else {
+        const r = await fetch("api/estimar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ diag: true }),
+        });
+        if (r.status === 404 || r.status === 405 || r.status === 501) {
+          return statusIA("Este endereço não tem o backend (teste no site da Vercel, não na prévia).");
+        }
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) return statusIA("Servidor: " + (j.erro || ("respondeu " + r.status)));
+        statusIA("Servidor → geração: " + j.geracao + " | busca: " + j.busca +
+          " | modelos: " + (j.modelos || []).slice(0, 3).join(", "));
+      }
+    } catch (e) {
+      statusIA(e instanceof TypeError
+        ? "Chamadas externas bloqueadas aqui — teste no site da Vercel."
+        : "Erro no teste: " + e.message);
+    }
+  });
 
   $("btn-ia").addEventListener("click", async () => {
     const key = $("p-gemini").value.trim();

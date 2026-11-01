@@ -15,9 +15,9 @@
 const MODELOS_FIXOS = [
   "gemini-flash-latest",   // apelido oficial: sempre aponta para o flash estável
   "gemini-3.8-flash",
-  "gemini-3.5-flash-lite",
-  "gemini-3-flash",
-  "gemini-2.5-flash",
+  "gemini-3.5-flash",
+  "gemini-3-flash-preview",
+  "gemini-3.5-flash-lite", // por último: nem sempre suporta busca
 ];
 
 let MODELOS_DESCOBERTOS = null;
@@ -72,8 +72,9 @@ async function gerar(chave, modelo, prompt, comBusca) {
   return partes.map(p => p.text || "").join("");
 }
 
-// tenta cada modelo; 404/429 pulam para o próximo; se a busca (grounding)
-// falhar por outro motivo, tenta o mesmo modelo SEM busca antes de desistir
+// tenta cada modelo; 404/429 pulam para o próximo; 400 na busca significa
+// "este modelo não suporta grounding" e também pula; outros erros na busca
+// tentam o mesmo modelo SEM busca antes de desistir
 async function gerarComFallback(chave, prompt, comBusca) {
   let ultimoErro = null;
   for (const modelo of await candidatos(chave)) {
@@ -82,6 +83,7 @@ async function gerarComFallback(chave, prompt, comBusca) {
     } catch (e) {
       ultimoErro = e;
       if (e.status === 404 || e.status === 429) continue;
+      if (comBusca && e.status === 400) continue;
       if (comBusca) {
         try {
           const promptSem = prompt + " (Não foi possível pesquisar na internet: estime pelo seu " +
@@ -121,6 +123,21 @@ module.exports = async (req, res) => {
   }
   hist.push(agora);
   ACESSOS.set(ip, hist);
+
+  // diagnóstico: mostra o que o servidor consegue fazer com a chave atual
+  if (req.body && req.body.diag === true) {
+    const diag = { modelos: await candidatos(chave), geracao: null, busca: null };
+    try {
+      await gerarComFallback(chave, 'Responda SOMENTE com o JSON {"ok": true}', false);
+      diag.geracao = "ok";
+    } catch (e) { diag.geracao = String(e.message || e).slice(0, 160); }
+    try {
+      const b = await gerarComFallback(chave,
+        'Pesquise na internet a cotação atual do dólar em reais e responda SOMENTE com o JSON {"ok": true}', true);
+      diag.busca = b.buscou ? "ok (com pesquisa Google)" : "ok, mas SEM pesquisa Google (grounding indisponível)";
+    } catch (e) { diag.busca = String(e.message || e).slice(0, 160); }
+    return res.status(200).json(diag);
+  }
 
   const soTexto = v => Array.isArray(v) ? v.filter(x => typeof x === "string").slice(0, 150) : [];
   const regioes = soTexto(req.body && req.body.regioes);
