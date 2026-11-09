@@ -347,7 +347,7 @@
         <label for="p-gemini">Chave da API Gemini — opcional (vazio = usa a chave do servidor do site)</label>
         <input id="p-gemini" type="password" placeholder="AIza..." autocomplete="off">
       </div>
-      <button class="botao" id="btn-ia" type="button" style="align-self:center">🔎 Buscar preços nos portais com IA (VivaReal, ZAP…)</button>
+      <button class="botao" id="btn-ia" type="button" style="align-self:center">🔎 Buscar mais preços nos portais (IA)</button>
       <button class="botao" id="btn-diag" type="button" style="align-self:center; font-size:0.8rem">🩺 testar conexão da IA</button>
       <span class="nota" id="ia-status" style="margin:0; align-self:center"></span>
     </div>
@@ -1354,7 +1354,11 @@
     }
   });
 
-  $("btn-ia").addEventListener("click", async () => {
+  let buscandoPortais = false;
+  async function buscarPortais() {
+    if (buscandoPortais) return;
+    buscandoPortais = true;
+    try {
     const key = $("p-gemini").value.trim();
     const planilha = planilhaAtiva();
     if (!planilha || !planilha.lotes.length) return statusIA("Envie uma planilha primeiro.");
@@ -1426,9 +1430,11 @@
           ". Enquanto isso, a venda estimada usa a avaliação da Caixa.");
       } else {
         statusIA(nOk + " de " + alvo.length + " lotes com preço dos portais ✓ — venda e ROI " +
-          "recalculados (base \"portais\"). Clique de novo para buscar os próximos.");
+          "recalculados (base \"portais\"). Continuando com os próximos…");
       }
       desenharPlanilha();
+      // segue sozinho para o próximo lote de 20 enquanto houver progresso
+      if (nOk > 0) setTimeout(buscarPortais, 1500);
     } catch (e) {
       if (e.message === "SEM_BACKEND") {
         statusIA("Este endereço não tem o backend da IA. No site na Vercel com a variável GEMINI_API_KEY configurada, qualquer visitante usa sem chave — ou cole a sua chave no campo ao lado.");
@@ -1438,7 +1444,9 @@
         statusIA("Erro: " + e.message);
       }
     }
-  });
+    } finally { buscandoPortais = false; }
+  }
+  $("btn-ia").addEventListener("click", buscarPortais);
 
   /* ============ upload ============ */
   const zona = $("zona"), arquivo = $("arquivo"), erro = $("erro");
@@ -1467,6 +1475,9 @@
         $("aba-favoritos").hidden = false;
         plLoteSelecionado = null;
         mostrarVista(resultado.formato);
+        // busca automática: já traz o preço de venda dos portais pela IA
+        statusIA("Planilha carregada — buscando preços de venda nos portais automaticamente…");
+        setTimeout(buscarPortais, 600);
       } catch (e) {
         erro.innerHTML = "⚠️ " + e.message;
         erro.hidden = false;
