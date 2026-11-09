@@ -191,6 +191,14 @@ module.exports = async (req, res) => {
       return res.status(502).json({ erro: "resposta inválida da IA" });
     }
   } catch (e) {
-    return res.status(502).json({ erro: String(e.message || e).slice(0, 200) });
+    const msg = String(e.message || e);
+    if (/respondeu 429/.test(msg)) {
+      return res.status(502).json({
+        erro: "Cota da chave do Google esgotada (429). A cota gratuita renova todo dia; " +
+          "para uso maior, ative o faturamento da chave no Google AI Studio (custa centavos por busca).",
+        cota: true,
+      });
+    }
+    return res.status(502).json({ erro: msg.slice(0, 200) });
   }
 };

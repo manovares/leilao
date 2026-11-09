@@ -1,4 +1,7 @@
 {
   "buildCommand": "",
-  "outputDirectory": "frontend"
+  "outputDirectory": "frontend",
+  "functions": {
+    "api/*.js": { "maxDuration": 60 }
+  }
 }

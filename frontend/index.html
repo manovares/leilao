@@ -1414,6 +1414,8 @@
         } catch (eLote) {
           if (eLote.message === "SEM_BACKEND" || eLote instanceof TypeError) throw eLote;
           ultimoErroLote = eLote; // erro pontual em um lote: segue para o próximo
+          // cota esgotada: não adianta insistir nos próximos lotes
+          if (/429|[Cc]ota/.test(String(eLote.message))) throw eLote;
         }
       }
       localStorage.setItem("valores_ia_v1",
