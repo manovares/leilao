@@ -1265,6 +1265,11 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(corpo),
+        signal: AbortSignal.timeout(20000),
+      }).catch(err => {
+        const e = new Error("Gemini (" + modelo + ") não respondeu em 20s");
+        e.status = 408;
+        throw err && err.name === "TimeoutError" ? e : err;
       });
     if (!r.ok) {
       const e = new Error("Gemini (" + modelo + ") respondeu " + r.status + ": " + (await r.text()).slice(0, 140));
@@ -1285,8 +1290,11 @@
         return await gerarGemini(key, modelo, prompt, comBusca);
       } catch (e) {
         ultimoErro = e;
-        if (e.status === 404 || e.status === 429) continue; // modelo indisponível/cota: próximo
-        if (comBusca && e.status === 400) continue; // modelo sem suporte à busca: próximo
+        if (e.status === 404) continue; // modelo indisponível: próximo
+        if (!comBusca && e.status === 429) continue; // cota de geração: próximo
+        if (comBusca && e.status === 400) continue; // sem suporte à busca: próximo
+        // na busca, 429 (cota de pesquisa) e outros erros tentam SEM busca:
+        // a cota de geração costuma existir mesmo quando a de pesquisa acaba
         if (comBusca) {
           // a pesquisa Google falhou: tenta o mesmo modelo sem busca
           try {
@@ -1294,7 +1302,7 @@
               "", prompt + " (Não foi possível pesquisar na internet: estime pelo seu conhecimento do mercado local e diga no resumo que é estimativa sem busca.)", false);
           } catch (e2) {
             ultimoErro = e2;
-            if (e2.status === 404 || e2.status === 429) continue;
+            continue;
           }
         }
       }

@@ -56,11 +56,17 @@ async function gerar(chave, modelo, prompt, comBusca) {
   };
   if (comBusca) corpo.tools = [{ google_search: {} }];
   else corpo.generationConfig.responseMimeType = "application/json";
+  // nunca deixa uma chamada pendurar: 20s e aborta (vira erro visível)
   const r = await fetch(
     "https://generativelanguage.googleapis.com/v1beta/models/" + modelo +
     ":generateContent?key=" + encodeURIComponent(chave),
-    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) },
-  );
+    { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(corpo), signal: AbortSignal.timeout(20000) },
+  ).catch(err => {
+    const e = new Error("Gemini (" + modelo + ") não respondeu em 20s");
+    e.status = 408;
+    throw err && err.name === "TimeoutError" ? e : err;
+  });
   if (!r.ok) {
     const e = new Error("Gemini (" + modelo + ") respondeu " + r.status);
     e.status = r.status;
@@ -72,17 +78,19 @@ async function gerar(chave, modelo, prompt, comBusca) {
   return partes.map(p => p.text || "").join("");
 }
 
-// tenta cada modelo; 404/429 pulam para o próximo; 400 na busca significa
-// "este modelo não suporta grounding" e também pula; outros erros na busca
-// tentam o mesmo modelo SEM busca antes de desistir
+// tenta os primeiros modelos; 404 pula para o próximo; na busca, 400
+// (sem suporte a grounding) também pula, e QUALQUER outra falha — 429 de
+// cota de pesquisa incluído — tenta o mesmo modelo SEM busca, porque a
+// cota de geração costuma existir mesmo quando a de pesquisa acaba
 async function gerarComFallback(chave, prompt, comBusca) {
   let ultimoErro = null;
-  for (const modelo of await candidatos(chave)) {
+  for (const modelo of (await candidatos(chave)).slice(0, 5)) {
     try {
       return { texto: await gerar(chave, modelo, prompt, comBusca), buscou: comBusca };
     } catch (e) {
       ultimoErro = e;
-      if (e.status === 404 || e.status === 429) continue;
+      if (e.status === 404) continue;
+      if (!comBusca && e.status === 429) continue;
       if (comBusca && e.status === 400) continue;
       if (comBusca) {
         try {
@@ -91,7 +99,7 @@ async function gerarComFallback(chave, prompt, comBusca) {
           return { texto: await gerar(chave, modelo, promptSem, false), buscou: false };
         } catch (e2) {
           ultimoErro = e2;
-          if (e2.status === 404 || e2.status === 429) continue;
+          continue; // tenta o próximo modelo
         }
       }
     }
