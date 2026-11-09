@@ -126,16 +126,22 @@ module.exports = async (req, res) => {
 
   // diagnóstico: mostra o que o servidor consegue fazer com a chave atual
   if (req.body && req.body.diag === true) {
-    const diag = { modelos: await candidatos(chave), geracao: null, busca: null };
-    try {
-      await gerarComFallback(chave, 'Responda SOMENTE com o JSON {"ok": true}', false);
-      diag.geracao = "ok";
-    } catch (e) { diag.geracao = String(e.message || e).slice(0, 160); }
-    try {
-      const b = await gerarComFallback(chave,
-        'Pesquise na internet a cotação atual do dólar em reais e responda SOMENTE com o JSON {"ok": true}', true);
-      diag.busca = b.buscou ? "ok (com pesquisa Google)" : "ok, mas SEM pesquisa Google (grounding indisponível)";
-    } catch (e) { diag.busca = String(e.message || e).slice(0, 160); }
+    const lista = (await candidatos(chave)).slice(0, 3); // só os 3 primeiros p/ caber no tempo
+    const diag = { modelos: lista, geracao: null, busca: null };
+    for (const m of lista) {
+      try {
+        await gerar(chave, m, 'Responda SOMENTE com o JSON {"ok": true}', false);
+        diag.geracao = "ok (" + m + ")";
+        break;
+      } catch (e) { diag.geracao = String(e.message || e).slice(0, 140); }
+    }
+    for (const m of lista) {
+      try {
+        await gerar(chave, m, 'Pesquise na internet a cotação atual do dólar e responda SOMENTE com o JSON {"ok": true}', true);
+        diag.busca = "ok com pesquisa Google (" + m + ")";
+        break;
+      } catch (e) { diag.busca = String(e.message || e).slice(0, 140); }
+    }
     return res.status(200).json(diag);
   }
 
