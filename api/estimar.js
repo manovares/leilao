@@ -82,11 +82,25 @@ async function gerar(chave, modelo, prompt, comBusca) {
 // (sem suporte a grounding) também pula, e QUALQUER outra falha — 429 de
 // cota de pesquisa incluído — tenta o mesmo modelo SEM busca, porque a
 // cota de geração costuma existir mesmo quando a de pesquisa acaba
+let CAMINHO_BOM = { buscado: null, direto: null }; // memória por instância
+
 async function gerarComFallback(chave, prompt, comBusca) {
   let ultimoErro = null;
+  // atalho: reusa o que funcionou na última chamada (economiza ~30s por lote)
+  const memo = comBusca ? CAMINHO_BOM.buscado : CAMINHO_BOM.direto;
+  if (memo) {
+    try {
+      return { texto: await gerar(chave, memo.modelo, memo.buscou ? prompt
+        : prompt + " (Não foi possível pesquisar na internet: estime pelo seu conhecimento do mercado local e diga no resumo que é estimativa sem busca.)",
+        memo.buscou), buscou: memo.buscou };
+    } catch (e) { /* memória desatualizada: segue o caminho completo */ }
+  }
   for (const modelo of (await candidatos(chave)).slice(0, 5)) {
     try {
-      return { texto: await gerar(chave, modelo, prompt, comBusca), buscou: comBusca };
+      const texto = await gerar(chave, modelo, prompt, comBusca);
+      if (comBusca) CAMINHO_BOM.buscado = { modelo, buscou: true };
+      else CAMINHO_BOM.direto = { modelo, buscou: false };
+      return { texto, buscou: comBusca };
     } catch (e) {
       ultimoErro = e;
       if (e.status === 404) continue;
@@ -96,7 +110,9 @@ async function gerarComFallback(chave, prompt, comBusca) {
         try {
           const promptSem = prompt + " (Não foi possível pesquisar na internet: estime pelo seu " +
             "conhecimento do mercado local e diga no resumo que é estimativa sem busca.)";
-          return { texto: await gerar(chave, modelo, promptSem, false), buscou: false };
+          const texto = await gerar(chave, modelo, promptSem, false);
+          if (comBusca) CAMINHO_BOM.buscado = { modelo, buscou: false };
+          return { texto, buscou: false };
         } catch (e2) {
           ultimoErro = e2;
           continue; // tenta o próximo modelo

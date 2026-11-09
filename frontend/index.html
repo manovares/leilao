@@ -851,6 +851,8 @@
       { k: "desconto", t: "Desconto", f: v => pct(v, 1) },
       { k: "investimento", t: "Custo total", f: brl },
       { k: "venda", t: "Venda estimada", f: brl },
+      { k: "fonte_venda", t: "Base", esq: true, f: v => v === "portais"
+        ? '<span class="positivo">Mercado (IA)</span>' : "Avaliação" },
       { k: "lucro", t: "Lucro líq.", f: v => `<span class="${v >= 0 ? "positivo" : "negativo"}">${brl(v)}</span>` },
       { k: "roi", t: "ROI", f: v => pct(v, 1) },
       { k: "classificacao", t: "Classificação", esq: true, f: chipCls },
@@ -1410,7 +1412,7 @@
           d.area > 0 ? d.area + " m²" : "", d.quartos > 0 ? d.quartos + " quarto(s)" : ""]
           .filter(Boolean).join(", ");
         const prompt = "Pesquise anúncios de VENDA de imóveis usados nos portais brasileiros " +
-          "vivareal.com.br, zapimoveis.com.br, quintoandar.com.br, imovelweb.com.br e olx.com.br, " +
+          "vivareal.com.br, zapimoveis.com.br, quintoandar.com.br, chavesnamao.com.br, imovelweb.com.br e olx.com.br, " +
           "semelhantes a este (mesmo bairro ou condomínio, tipo e tamanho parecidos): " + descricao + ". " +
           "IGNORE COMPLETAMENTE qualquer anúncio de leilão, arremate ou venda judicial publicado nesses sites. " +
           "Com base apenas nos anúncios comuns encontrados, estime o valor de venda deste imóvel. " +
