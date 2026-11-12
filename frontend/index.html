@@ -347,7 +347,7 @@
         <label for="p-gemini">Chave da API Gemini — opcional (vazio = usa a chave do servidor do site)</label>
         <input id="p-gemini" type="password" placeholder="AIza..." autocomplete="off">
       </div>
-      <button class="botao" id="btn-ia" type="button" style="align-self:center">🔎 Buscar mais preços nos portais (IA)</button>
+      <button class="botao" id="btn-ia" type="button" style="align-self:center">🔎 Precificar todos pelo mercado (IA)</button>
       <button class="botao" id="btn-diag" type="button" style="align-self:center; font-size:0.8rem">🩺 testar conexão da IA</button>
       <span class="nota" id="ia-status" style="margin:0; align-self:center"></span>
     </div>
@@ -1369,91 +1369,83 @@
     if (buscandoPortais) return;
     buscandoPortais = true;
     try {
-    const key = $("p-gemini").value.trim();
-    const planilha = planilhaAtiva();
-    if (!planilha || !planilha.lotes.length) return statusIA("Envie uma planilha primeiro.");
-    if (key) localStorage.setItem("gemini_key", key);
+      const key = $("p-gemini").value.trim();
+      const planilha = planilhaAtiva();
+      if (!planilha || !planilha.lotes.length) return statusIA("Envie uma planilha primeiro.");
+      if (key) localStorage.setItem("gemini_key", key);
 
-    /* consulta os portais para UM imóvel, pela chave do visitante ou pelo backend */
-    async function consultarPortais(descricao, promptDireto) {
-      if (key) return await chamarGemini(key, promptDireto, true);
-      const r = await fetch("api/estimar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ portal: descricao }),
-      });
-      if (r.status === 404 || r.status === 405 || r.status === 501) throw new Error("SEM_BACKEND");
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j.erro || "servidor respondeu " + r.status);
-      return j.resultado;
-    }
+      /* a ficha de cada imóvel vai inteira para a IA: tipo, endereço,
+         bairro, cidade, área, quartos e vagas */
+      const fichaDe = d => 'id "' + d.id + '": ' + (d.tipo || "imóvel") +
+        (d.endereco ? ", " + d.endereco : "") +
+        (d.bairro ? ", " + d.bairro : "") +
+        ", " + d.cidade + (d.uf ? "/" + d.uf : "") +
+        (d.area > 0 ? ", " + d.area + " m²" : "") +
+        (d.quartos > 0 ? ", " + d.quartos + " quarto(s)" : "") +
+        (d.vagas > 0 ? ", " + d.vagas + " vaga(s)" : "");
 
-    /* prioriza os lotes em exibição (filtros atuais) sem preço dos portais,
-       do maior desconto para o menor — até 20 por clique */
-    const base = (ultimaListaPlanilha && ultimaListaPlanilha.length)
-      ? ultimaListaPlanilha : planilha.lotes;
-    const alvo = [...base]
-      .filter(d => !(valoresIA[String(d.id)] > 0) && d.valor_avaliacao > 0)
-      .sort((a, b) => (b.desconto || 0) - (a.desconto || 0))
-      .slice(0, 20);
-    if (!alvo.length) {
-      return statusIA("Todos os lotes em exibição já têm preço dos portais ✓ — mude os filtros para buscar outros.");
-    }
+      async function estimarBloco(linhas) {
+        const prompt = "Você é um avaliador imobiliário brasileiro. Estime o valor de VENDA de " +
+          "mercado (em reais) de cada imóvel usado abaixo, de acordo com as especificações de " +
+          "cada um (tipo, localização, área, quartos, vagas), em valores realistas para a região. " +
+          "IMPORTANTE: use como referência apenas o mercado tradicional (anúncios como os dos " +
+          "portais VivaReal, ZAP, QuintoAndar, Chaves na Mão); NUNCA baseie os valores em " +
+          "imóveis de leilão, arremate ou venda judicial. " +
+          'Responda SOMENTE com JSON válido: um array de objetos {"id": string, "valor": number}. ' +
+          "Não escreva mais nada.\nImóveis:\n- " + linhas.join("\n- ");
+        if (key) return extrairJSON(await chamarGemini(key, prompt, false));
+        const r = await fetch("api/estimar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ imoveis: linhas }),
+        });
+        if (r.status === 404 || r.status === 405 || r.status === 501) throw new Error("SEM_BACKEND");
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.erro || "servidor respondeu " + r.status);
+        return j.precos;
+      }
 
-    let nOk = 0;
-    let ultimoErroLote = null;
-    try {
-      for (let i = 0; i < alvo.length; i++) {
-        const d = alvo[i];
-        statusIA("Buscando anúncios reais nos portais (VivaReal, ZAP, QuintoAndar…): " +
-          (i + 1) + "/" + alvo.length + "…");
-        const descricao = [(d.tipo || "imóvel"), d.endereco, d.bairro,
-          d.cidade + (d.uf ? "/" + d.uf : ""),
-          d.area > 0 ? d.area + " m²" : "", d.quartos > 0 ? d.quartos + " quarto(s)" : ""]
-          .filter(Boolean).join(", ");
-        const prompt = "Pesquise anúncios de VENDA de imóveis usados nos portais brasileiros " +
-          "vivareal.com.br, zapimoveis.com.br, quintoandar.com.br, chavesnamao.com.br, imovelweb.com.br e olx.com.br, " +
-          "semelhantes a este (mesmo bairro ou condomínio, tipo e tamanho parecidos): " + descricao + ". " +
-          "IGNORE COMPLETAMENTE qualquer anúncio de leilão, arremate ou venda judicial publicado nesses sites. " +
-          "Com base apenas nos anúncios comuns encontrados, estime o valor de venda deste imóvel. " +
-          'Responda SOMENTE com JSON: {"valor": número em reais ou null, ' +
-          '"resumo": "frase curta com os anúncios usados de referência e o portal"}.';
-        try {
-          const res = extrairJSON(await consultarPortais(descricao, prompt));
-          if (res && res.valor > 10000 && res.valor < 100000000) {
-            valoresIA[String(d.id)] = res.valor;
-            if (res.resumo) fontesIA[String(d.id)] = String(res.resumo).slice(0, 300);
-            nOk++;
-          }
-        } catch (eLote) {
-          if (eLote.message === "SEM_BACKEND" || eLote instanceof TypeError) throw eLote;
-          ultimoErroLote = eLote; // erro pontual em um lote: segue para o próximo
-          // cota esgotada: não adianta insistir nos próximos lotes
-          if (/429|[Cc]ota/.test(String(eLote.message))) throw eLote;
+      /* TODOS os lotes em exibição ainda sem preço, maiores descontos primeiro */
+      const base = (ultimaListaPlanilha && ultimaListaPlanilha.length)
+        ? ultimaListaPlanilha : planilha.lotes;
+      const alvo = [...base]
+        .filter(d => !(valoresIA[String(d.id)] > 0) && d.valor_avaliacao > 0)
+        .sort((a, b) => (b.desconto || 0) - (a.desconto || 0));
+      if (!alvo.length) return statusIA("Todos os lotes em exibição já têm preço de mercado ✓.");
+
+      const TAM = 40;
+      let nOk = 0;
+      try {
+        for (let i = 0; i < alvo.length; i += TAM) {
+          const chunk = alvo.slice(i, i + TAM);
+          statusIA("Precificando pelo mercado (ficha de cada imóvel, sem leilão): " +
+            Math.min(i + TAM, alvo.length) + "/" + alvo.length + "…");
+          const arr = await estimarBloco(chunk.map(fichaDe));
+          (arr || []).forEach(o => {
+            if (o && o.id && o.valor > 10000 && o.valor < 100000000) {
+              const id = String(o.id).trim();
+              valoresIA[id] = o.valor;
+              if (!fontesIA[id]) fontesIA[id] = "estimado pela ficha do imóvel (tipo, área, quartos, bairro) — mercado tradicional, sem leilão";
+              nOk++;
+            }
+          });
+          localStorage.setItem("valores_ia_v1",
+            JSON.stringify({ valores: valoresIA, fontes: fontesIA, em: new Date().toISOString() }));
+          desenharPlanilha(); // a tabela vai preenchendo a cada bloco
         }
+        statusIA(nOk + " de " + alvo.length + " lotes precificados pelo mercado ✓ — " +
+          "venda e ROI recalculados (coluna Base = \"Mercado (IA)\").");
+      } catch (e) {
+        const parcial = nOk ? nOk + " lotes precificados antes de parar. " : "";
+        if (e.message === "SEM_BACKEND") {
+          statusIA(parcial + "Este endereço não tem o backend da IA — use o site na Vercel ou cole sua chave.");
+        } else if (e instanceof TypeError) {
+          statusIA(parcial + "Esta prévia bloqueia chamadas externas — no site da Vercel funciona.");
+        } else {
+          statusIA(parcial + "Parou: " + String(e.message).slice(0, 150));
+        }
+        if (nOk) desenharPlanilha();
       }
-      localStorage.setItem("valores_ia_v1",
-        JSON.stringify({ valores: valoresIA, fontes: fontesIA, em: new Date().toISOString() }));
-      if (nOk === 0) {
-        statusIA("Nenhum lote atualizado — " +
-          (ultimoErroLote ? "erro: " + String(ultimoErroLote.message).slice(0, 160) : "a IA não encontrou referências") +
-          ". Enquanto isso, a venda estimada usa a avaliação da Caixa.");
-      } else {
-        statusIA(nOk + " de " + alvo.length + " lotes com preço dos portais ✓ — venda e ROI " +
-          "recalculados (base \"portais\"). Continuando com os próximos…");
-      }
-      desenharPlanilha();
-      // segue sozinho para o próximo lote de 20 enquanto houver progresso
-      if (nOk > 0) setTimeout(buscarPortais, 1500);
-    } catch (e) {
-      if (e.message === "SEM_BACKEND") {
-        statusIA("Este endereço não tem o backend da IA. No site na Vercel com a variável GEMINI_API_KEY configurada, qualquer visitante usa sem chave — ou cole a sua chave no campo ao lado.");
-      } else if (e instanceof TypeError) {
-        statusIA("Esta prévia hospedada bloqueia chamadas externas. No site publicado na Vercel a busca nos portais funciona para qualquer visitante.");
-      } else {
-        statusIA("Erro: " + e.message);
-      }
-    }
     } finally { buscandoPortais = false; }
   }
   $("btn-ia").addEventListener("click", buscarPortais);

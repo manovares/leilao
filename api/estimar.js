@@ -126,7 +126,7 @@ async function gerarComFallback(chave, prompt, comBusca) {
 // proteção simples contra abuso: 30 consultas por IP a cada 10 minutos
 const ACESSOS = new Map();
 const JANELA_MS = 10 * 60 * 1000;
-const LIMITE = 30;
+const LIMITE = 150; // blocos de 40 imóveis: a lista inteira cabe no limite
 
 module.exports = async (req, res) => {
   if (req.method !== "POST") {
