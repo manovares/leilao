@@ -189,13 +189,15 @@ module.exports = async (req, res) => {
           "(venda ou anúncio). IGNORE anúncios de leilão, arremate ou venda judicial — considere apenas " +
           'o mercado tradicional. Responda SOMENTE com JSON: {"valor": número em reais ou null, ' +
           '"resumo": "frase curta com o que encontrou e a fonte"}.'
-        : "Pesquise anúncios de VENDA de imóveis usados nos portais brasileiros vivareal.com.br, " +
-          "zapimoveis.com.br, quintoandar.com.br, imovelweb.com.br e olx.com.br, semelhantes a este " +
-          "(mesmo bairro ou condomínio, tipo e tamanho parecidos): " + portal + ". " +
-          "IGNORE COMPLETAMENTE qualquer anúncio de leilão, arremate ou venda judicial publicado nesses sites. " +
-          "Com base apenas nos anúncios comuns encontrados, estime o valor de venda deste imóvel. " +
+        : "Encontre anúncios ATIVOS de VENDA com o MESMO PERFIL deste imóvel: " + portal + ". " +
+          "Pesquise nos portais brasileiros (vivareal.com.br, zapimoveis.com.br, quintoandar.com.br, " +
+          "chavesnamao.com.br, imovelweb.com.br, olx.com.br) por anúncios do mesmo tipo, com área " +
+          "próxima (±20%), mesmo número de quartos e de vagas de garagem, dando preferência à MESMA " +
+          "RUA ou ao mesmo condomínio; só se não houver, use o mesmo bairro. EXCLUA COMPLETAMENTE " +
+          "anúncios de leilão, arremate ou venda judicial — considere apenas anunciantes comuns " +
+          "(imobiliárias e proprietários). Com base nesses anúncios, estime o valor de venda. " +
           'Responda SOMENTE com JSON: {"valor": número em reais ou null, ' +
-          '"resumo": "frase curta com os anúncios usados de referência e o portal"}.';
+          '"resumo": "anúncio(s) de referência: perfil, preço e portal"}.';
       const saida = await gerarComFallback(chave, promptCond, true);
       return res.status(200).json({ resultado: saida.texto, buscou: saida.buscou });
     }

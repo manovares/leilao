@@ -1374,16 +1374,47 @@
       if (!planilha || !planilha.lotes.length) return statusIA("Envie uma planilha primeiro.");
       if (key) localStorage.setItem("gemini_key", key);
 
-      /* a ficha de cada imóvel vai inteira para a IA: tipo, endereço,
-         bairro, cidade, área, quartos e vagas */
-      const fichaDe = d => 'id "' + d.id + '": ' + (d.tipo || "imóvel") +
+      /* ficha completa do imóvel: tipo, endereço, bairro, cidade, área, quartos, garagem */
+      const fichaDe = d => (d.tipo || "imóvel") +
         (d.endereco ? ", " + d.endereco : "") +
         (d.bairro ? ", " + d.bairro : "") +
         ", " + d.cidade + (d.uf ? "/" + d.uf : "") +
         (d.area > 0 ? ", " + d.area + " m²" : "") +
         (d.quartos > 0 ? ", " + d.quartos + " quarto(s)" : "") +
-        (d.vagas > 0 ? ", " + d.vagas + " vaga(s)" : "");
+        (d.vagas > 0 ? ", " + d.vagas + " vaga(s) de garagem" : "");
 
+      const PROMPT_REAL = ficha =>
+        "Encontre anúncios ATIVOS de VENDA com o MESMO PERFIL deste imóvel: " + ficha + ". " +
+        "Pesquise nos portais brasileiros (vivareal.com.br, zapimoveis.com.br, quintoandar.com.br, " +
+        "chavesnamao.com.br, imovelweb.com.br, olx.com.br) por anúncios do mesmo tipo, com área " +
+        "próxima (±20%), mesmo número de quartos e de vagas de garagem, dando preferência à MESMA " +
+        "RUA ou ao mesmo condomínio; só se não houver, use o mesmo bairro. EXCLUA COMPLETAMENTE " +
+        "anúncios de leilão, arremate ou venda judicial — considere apenas anunciantes comuns " +
+        "(imobiliárias e proprietários). Com base nesses anúncios, estime o valor de venda. " +
+        'Responda SOMENTE com JSON: {"valor": número em reais ou null, ' +
+        '"resumo": "anúncio(s) de referência: perfil, preço e portal"}.';
+
+      /* busca REAL (anúncios ao vivo) para UM imóvel */
+      async function buscaRealLote(d) {
+        if (key) {
+          const res = extrairJSON(await chamarGemini(key, PROMPT_REAL(fichaDe(d)), true));
+          if (res) res._buscou = !/sem busca/i.test(String(res.resumo || ""));
+          return res;
+        }
+        const r = await fetch("api/estimar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ portal: fichaDe(d) }),
+        });
+        if (r.status === 404 || r.status === 405 || r.status === 501) throw new Error("SEM_BACKEND");
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.erro || "servidor respondeu " + r.status);
+        const res = extrairJSON(j.resultado);
+        if (res) res._buscou = j.buscou !== false;
+        return res;
+      }
+
+      /* estimativa em bloco (40 fichas por chamada) quando a busca real não está disponível */
       async function estimarBloco(linhas) {
         const prompt = "Você é um avaliador imobiliário brasileiro. Estime o valor de VENDA de " +
           "mercado (em reais) de cada imóvel usado abaixo, de acordo com as especificações de " +
@@ -1405,36 +1436,77 @@
         return j.precos;
       }
 
-      /* TODOS os lotes em exibição ainda sem preço, maiores descontos primeiro */
+      const aplica = (id, valor, resumo) => {
+        valoresIA[String(id).trim()] = valor;
+        if (resumo) fontesIA[String(id).trim()] = String(resumo).slice(0, 300);
+      };
+      const salva = () => localStorage.setItem("valores_ia_v1",
+        JSON.stringify({ valores: valoresIA, fontes: fontesIA, em: new Date().toISOString() }));
+
       const base = (ultimaListaPlanilha && ultimaListaPlanilha.length)
         ? ultimaListaPlanilha : planilha.lotes;
-      const alvo = [...base]
+      let alvo = [...base]
         .filter(d => !(valoresIA[String(d.id)] > 0) && d.valor_avaliacao > 0)
         .sort((a, b) => (b.desconto || 0) - (a.desconto || 0));
       if (!alvo.length) return statusIA("Todos os lotes em exibição já têm preço de mercado ✓.");
 
-      const TAM = 40;
       let nOk = 0;
       try {
+        /* etapa 1: tenta a busca REAL (anúncio do mesmo perfil/rua, sem leilão) */
+        let buscaReal = false;
+        statusIA("Testando busca de anúncios reais nos portais…");
+        try {
+          const r0 = await buscaRealLote(alvo[0]);
+          if (r0 && r0.valor > 10000 && r0.valor < 100000000) {
+            aplica(alvo[0].id, r0.valor, r0.resumo);
+            nOk++;
+            buscaReal = r0._buscou === true;
+          }
+        } catch (e0) {
+          if (e0.message === "SEM_BACKEND" || e0 instanceof TypeError) throw e0;
+        }
+        if (buscaReal) {
+          const maxReal = Math.min(alvo.length, 150);
+          for (let i = 1; i < maxReal && buscaReal; i++) {
+            statusIA("Anúncios REAIS do mesmo perfil (rua/condomínio, sem leilão): " +
+              (i + 1) + "/" + maxReal + "…");
+            try {
+              const r = await buscaRealLote(alvo[i]);
+              if (r && r.valor > 10000 && r.valor < 100000000) {
+                aplica(alvo[i].id, r.valor, r.resumo);
+                nOk++;
+                if (r._buscou === false) buscaReal = false; // cota de busca acabou
+              }
+            } catch (eReal) {
+              if (/429|[Cc]ota/.test(String(eReal.message))) { buscaReal = false; }
+            }
+            if (i % 8 === 0) { salva(); desenharPlanilha(); }
+          }
+          salva();
+          desenharPlanilha();
+        }
+
+        /* etapa 2: o restante em blocos de 40 (estimativa pela ficha) */
+        alvo = alvo.filter(d => !(valoresIA[String(d.id)] > 0));
+        const TAM = 40;
         for (let i = 0; i < alvo.length; i += TAM) {
           const chunk = alvo.slice(i, i + TAM);
-          statusIA("Precificando pelo mercado (ficha de cada imóvel, sem leilão): " +
+          statusIA("Precificando pela ficha de cada imóvel (sem leilão): " +
             Math.min(i + TAM, alvo.length) + "/" + alvo.length + "…");
-          const arr = await estimarBloco(chunk.map(fichaDe));
+          const arr = await estimarBloco(chunk.map(d => 'id "' + d.id + '": ' + fichaDe(d)));
           (arr || []).forEach(o => {
             if (o && o.id && o.valor > 10000 && o.valor < 100000000) {
               const id = String(o.id).trim();
               valoresIA[id] = o.valor;
-              if (!fontesIA[id]) fontesIA[id] = "estimado pela ficha do imóvel (tipo, área, quartos, bairro) — mercado tradicional, sem leilão";
+              if (!fontesIA[id]) fontesIA[id] = "estimado pela ficha (tipo, área, quartos, garagem, rua) — mercado tradicional, sem leilão";
               nOk++;
             }
           });
-          localStorage.setItem("valores_ia_v1",
-            JSON.stringify({ valores: valoresIA, fontes: fontesIA, em: new Date().toISOString() }));
-          desenharPlanilha(); // a tabela vai preenchendo a cada bloco
+          salva();
+          desenharPlanilha();
         }
-        statusIA(nOk + " de " + alvo.length + " lotes precificados pelo mercado ✓ — " +
-          "venda e ROI recalculados (coluna Base = \"Mercado (IA)\").");
+        statusIA(nOk + " lotes precificados pelo mercado ✓ — coluna Base = \"Mercado (IA)\". " +
+          "Detalhe de cada lote mostra a referência usada.");
       } catch (e) {
         const parcial = nOk ? nOk + " lotes precificados antes de parar. " : "";
         if (e.message === "SEM_BACKEND") {
