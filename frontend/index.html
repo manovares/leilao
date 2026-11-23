@@ -1676,11 +1676,14 @@
         new Date().toLocaleDateString("pt-BR") + ")");
     } catch (e) {
       st.textContent = "";
-      erro.innerHTML = "⚠️ A Caixa pediu verificação anti-robô e barrou o download automático (" +
-        e.message + "). <b>Plano B em 2 cliques:</b> " +
-        '<a href="https://venda-imoveis.caixa.gov.br/sistema/download-lista.asp" target="_blank" rel="noopener">' +
-        "1) abra a página oficial de download ↗</a>, escolha o estado e baixe o arquivo; " +
-        "2) arraste o arquivo baixado aqui em cima — a análise é a mesma.";
+      erro.innerHTML = "⚠️ A Caixa barrou o download pelo nosso servidor (verificação anti-robô). " +
+        "Do SEU navegador funciona — <b>plano B em 2 cliques:</b><br>" +
+        '1) <a href="https://venda-imoveis.caixa.gov.br/listaweb/Lista_imoveis_' + uf +
+        '.csv" target="_blank" rel="noopener"><b>⬇ clique aqui para baixar a lista oficial de ' + uf +
+        "</b></a> (se a Caixa mostrar uma verificação, é só passar por ela que o arquivo baixa);<br>" +
+        "2) arraste o arquivo baixado para a área ali em cima — a análise é a mesma. " +
+        '<small>(se o link direto falhar, use a <a href="https://venda-imoveis.caixa.gov.br/sistema/download-lista.asp" ' +
+        'target="_blank" rel="noopener">página oficial de download ↗</a>)</small>';
       erro.hidden = false;
     } finally { b.disabled = false; }
   });
