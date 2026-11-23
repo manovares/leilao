@@ -270,6 +270,41 @@
     </div>
     <div id="erro" class="erro" hidden></div>
 
+    <div class="zona busca-direta" style="margin-top:14px">
+      <div class="icone">🔎</div>
+      <div class="principal">…ou busque direto, sem planilha</div>
+      <div class="apoio">O site baixa agora a <b>lista oficial de imóveis da Caixa</b> do estado escolhido
+        e analisa tudo na hora — mesmos custos, classes e alertas.</div>
+      <div style="margin-top:10px; display:flex; gap:10px; justify-content:center; align-items:center; flex-wrap:wrap">
+        <select id="bd-uf" class="botao" style="padding:8px 12px">
+          <option value="SP" selected>São Paulo (SP)</option>
+          <option value="RJ">Rio de Janeiro (RJ)</option>
+          <option value="MG">Minas Gerais (MG)</option>
+          <option value="PR">Paraná (PR)</option>
+          <option value="SC">Santa Catarina (SC)</option>
+          <option value="RS">Rio Grande do Sul (RS)</option>
+          <option value="BA">Bahia (BA)</option>
+          <option value="GO">Goiás (GO)</option>
+          <option value="DF">Distrito Federal (DF)</option>
+          <option value="ES">Espírito Santo (ES)</option>
+          <option value="PE">Pernambuco (PE)</option>
+          <option value="CE">Ceará (CE)</option>
+          <option value="MS">Mato Grosso do Sul (MS)</option>
+          <option value="MT">Mato Grosso (MT)</option>
+          <option value="PA">Pará (PA)</option>
+          <option value="AM">Amazonas (AM)</option>
+          <option value="AL">Alagoas (AL)</option><option value="AP">Amapá (AP)</option>
+          <option value="AC">Acre (AC)</option><option value="MA">Maranhão (MA)</option>
+          <option value="PB">Paraíba (PB)</option><option value="PI">Piauí (PI)</option>
+          <option value="RN">Rio G. do Norte (RN)</option><option value="RO">Rondônia (RO)</option>
+          <option value="RR">Roraima (RR)</option><option value="SE">Sergipe (SE)</option>
+          <option value="TO">Tocantins (TO)</option>
+        </select>
+        <button class="botao" id="bd-buscar">🔎 Buscar imóveis da Caixa agora</button>
+      </div>
+      <div class="apoio" id="bd-status" style="margin-top:8px"></div>
+    </div>
+
     <div class="acoes-inicio">
       <button class="botao" id="baixar-modelo">Baixar planilha modelo</button>
       <button class="botao" id="ver-exemplo">Ver exemplo com o modelo de ML</button>
@@ -1597,15 +1632,7 @@
           texto = new TextDecoder("utf-8").decode(leitor.result);
           if (texto.includes("\uFFFD")) texto = new TextDecoder("windows-1252").decode(leitor.result);
         }
-        const resultado = analisarPlanilha(texto, f.name);
-        slots[resultado.formato] = resultado;
-        $("aba-" + resultado.formato).hidden = false;
-        $("aba-favoritos").hidden = false;
-        plLoteSelecionado = null;
-        mostrarVista(resultado.formato);
-        // busca automática: já traz o preço de venda dos portais pela IA
-        statusIA("Planilha carregada — buscando preços de venda nos portais automaticamente…");
-        setTimeout(buscarPortais, 600);
+        carregarTexto(texto, f.name);
       } catch (e) {
         erro.innerHTML = "⚠️ " + e.message;
         erro.hidden = false;
@@ -1613,6 +1640,46 @@
     };
     leitor.readAsArrayBuffer(f);
   }
+
+  /* caminho comum do upload e da busca direta: analisa o CSV e abre o ranking */
+  function carregarTexto(texto, nome) {
+    const resultado = analisarPlanilha(texto, nome);
+    slots[resultado.formato] = resultado;
+    $("aba-" + resultado.formato).hidden = false;
+    $("aba-favoritos").hidden = false;
+    plLoteSelecionado = null;
+    mostrarVista(resultado.formato);
+    // busca automática: já traz o preço de venda dos portais pela IA
+    statusIA("Planilha carregada — buscando preços de venda nos portais automaticamente…");
+    setTimeout(buscarPortais, 600);
+  }
+
+  /* busca direta: baixa a lista oficial da Caixa pelo backend (sem planilha) */
+  $("bd-buscar").addEventListener("click", async () => {
+    const b = $("bd-buscar"), st = $("bd-status"), uf = $("bd-uf").value;
+    erro.hidden = true;
+    b.disabled = true;
+    st.textContent = "Baixando a lista oficial da Caixa de " + uf + "…";
+    try {
+      const r = await fetch("api/caixa?uf=" + encodeURIComponent(uf));
+      if (r.status === 404 || r.status === 405) {
+        throw new Error("a busca direta só funciona no site publicado na Vercel");
+      }
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.erro || "o servidor respondeu " + r.status);
+      }
+      const texto = await r.text();
+      st.textContent = "";
+      carregarTexto(texto, "Imóveis Caixa — " + uf + " (busca direta de " +
+        new Date().toLocaleDateString("pt-BR") + ")");
+    } catch (e) {
+      st.textContent = "";
+      erro.innerHTML = "⚠️ Busca direta falhou: " + e.message +
+        ". Dá para baixar a lista manualmente em venda-imoveis.caixa.gov.br e arrastar aqui.";
+      erro.hidden = false;
+    } finally { b.disabled = false; }
+  });
   zona.addEventListener("click", () => arquivo.click());
   zona.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); arquivo.click(); } });
   arquivo.addEventListener("change", () => { if (arquivo.files[0]) processarArquivo(arquivo.files[0]); arquivo.value = ""; });
