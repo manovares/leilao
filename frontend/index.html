@@ -411,6 +411,38 @@
   }
   .det-grade .alerta b { display: block; color: var(--critical-text); }
 
+  /* ---------- tela de processamento (busca do valor de venda) ---------- */
+  .proc {
+    position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; overflow-y: auto;
+    padding: 20px max(16px, env(safe-area-inset-right, 0px)) 20px max(16px, env(safe-area-inset-left, 0px));
+    background: color-mix(in srgb, var(--page) 90%, transparent);
+    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  }
+  .proc-caixa {
+    width: min(640px, 100%); background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; box-shadow: var(--sombra); padding: 26px 26px 22px;
+  }
+  .proc h2 { font: 700 1.5rem/1.15 var(--font-display); letter-spacing: -0.02em; margin: 0 0 8px; text-wrap: balance; }
+  .proc-sub { color: var(--ink-2); font-size: 0.9rem; margin: 0 0 18px; }
+  .proc-barra { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+  .proc-barra div { height: 100%; width: 0; background: var(--accent); border-radius: 4px; transition: width 0.4s ease; }
+  .proc-num { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 12px; margin-top: 8px; font-size: 0.86rem; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .proc-num b { color: var(--ink); font-weight: 600; }
+  .proc-atual { margin-top: 16px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); }
+  .proc-rot { display: block; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
+  #proc-atual { display: block; font-size: 0.9rem; line-height: 1.4; height: 2.8em; overflow: hidden; }
+  .proc-feed { list-style: none; margin: 10px 0 0; padding: 0; }
+  .proc-feed li {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: baseline;
+    padding: 7px 2px; border-bottom: 1px solid var(--grid); font-size: 0.84rem; animation: procEntra 0.25s ease;
+  }
+  .proc-feed li span { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .proc-feed li b { font-weight: 600; font-variant-numeric: tabular-nums; }
+  @keyframes procEntra { from { opacity: 0; transform: translateY(-4px); } }
+  .proc-acoes { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 18px; }
+  .proc-acoes .nota { margin: 0; }
+  @media (prefers-reduced-motion: reduce) { .proc-feed li { animation: none; } }
+
   footer { margin-top: 34px; padding-top: 16px; border-top: 1px solid var(--grid); color: var(--muted); font-size: 0.8rem; max-width: 80ch; }
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
@@ -699,6 +731,25 @@
 </div>
 
 <div class="dica" id="dica"></div>
+
+<div class="proc" id="proc" hidden role="dialog" aria-modal="true" aria-labelledby="proc-titulo">
+  <div class="proc-caixa">
+    <p class="sobrelinha" id="proc-fase">Preço de mercado</p>
+    <h2 id="proc-titulo" aria-live="polite">Buscando o valor de venda de cada imóvel</h2>
+    <p class="proc-sub" id="proc-sub"></p>
+    <div class="proc-barra" id="proc-prog" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Imóveis com valor de venda calculado"><div id="proc-fill"></div></div>
+    <div class="proc-num"><b id="proc-cont"></b><span id="proc-eta"></span></div>
+    <div class="proc-atual" id="proc-atual-caixa">
+      <span class="proc-rot">Agora</span>
+      <span id="proc-atual">Preparando…</span>
+    </div>
+    <ul class="proc-feed" id="proc-feed"></ul>
+    <div class="proc-acoes">
+      <button class="botao" id="proc-pular" type="button">Ver o ranking agora</button>
+      <span class="nota" id="proc-nota">O restante continua em segundo plano.</span>
+    </div>
+  </div>
+</div>
 
 <script src="xlsx.full.min.js"></script>
 <script src="dados.js"></script>
@@ -1717,9 +1768,92 @@
     }
   });
 
-  let buscandoPortais = false;
+  /* ============ tela de processamento ============ */
+  const fichaCurta = d => [cap(d.tipo || "imóvel"),
+    d.area > 0 ? Math.round(d.area) + " m²" : "",
+    d.quartos > 0 ? d.quartos + (d.quartos > 1 ? " quartos" : " quarto") : "",
+    d.vagas > 0 ? d.vagas + (d.vagas > 1 ? " vagas" : " vaga") : (d.vagas === 0 ? "sem garagem" : ""),
+  ].filter(Boolean).join(" · ");
+  const localCurto = d => [d.endereco ? titulo(d.endereco) : (d.bairro ? titulo(d.bairro) : ""), d.cidade]
+    .filter(Boolean).join(", ");
+  const proc = {
+    aberto: false, total: 0, feitos: 0, inicio: 0, pool: [], ix: 0, timer: null,
+    abrir(total) {
+      this.aberto = true; this.total = total; this.feitos = 0; this.inicio = Date.now();
+      this.pool = []; this.ix = 0;
+      $("proc-titulo").textContent = "Buscando o valor de venda de cada imóvel";
+      $("proc-sub").textContent = "";
+      $("proc-feed").innerHTML = "";
+      $("proc-atual").textContent = "Preparando…";
+      $("proc-atual-caixa").hidden = false;
+      $("proc-nota").hidden = false;
+      $("proc-pular").textContent = "Ver o ranking agora";
+      $("proc-pular").classList.remove("primario");
+      $("proc").hidden = false;
+      document.body.style.overflow = "hidden";
+      this.pinta();
+      clearInterval(this.timer);
+      const calmo = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      this.timer = setInterval(() => {
+        if (!this.pool.length) return;
+        const d = this.pool[this.ix++ % this.pool.length];
+        $("proc-atual").textContent = fichaCurta(d) + " — " + localCurto(d);
+      }, calmo ? 1500 : 240);
+      $("proc-pular").focus();
+    },
+    fase(rotulo, sub) { $("proc-fase").textContent = rotulo; $("proc-sub").textContent = sub; },
+    girar(lotes) { this.pool.push(...lotes); },
+    parar(lotes) { const fora = new Set(lotes); this.pool = this.pool.filter(d => !fora.has(d)); },
+    avanca(n) { this.feitos = Math.min(this.total, this.feitos + n); this.pinta(); },
+    feito(d, valor) {
+      if (!this.aberto) return;
+      const li = document.createElement("li"), sp = document.createElement("span"), b = document.createElement("b");
+      sp.textContent = fichaCurta(d) + " — " + localCurto(d);
+      b.textContent = brl(valor);
+      li.append(sp, b);
+      const feed = $("proc-feed");
+      feed.prepend(li);
+      while (feed.children.length > 5) feed.lastChild.remove();
+    },
+    pinta() {
+      const frac = this.total ? this.feitos / this.total : 0;
+      $("proc-fill").style.width = (frac * 100).toFixed(1) + "%";
+      $("proc-prog").setAttribute("aria-valuenow", Math.round(frac * 100));
+      $("proc-cont").textContent = this.feitos.toLocaleString("pt-BR") + " de " +
+        this.total.toLocaleString("pt-BR") + (this.total === 1 ? " imóvel" : " imóveis");
+      let eta = "";
+      if (this.feitos > 0 && this.feitos < this.total) {
+        const seg = (Date.now() - this.inicio) / this.feitos * (this.total - this.feitos) / 1000;
+        eta = seg < 60 ? "menos de 1 minuto restante" : "cerca de " + Math.ceil(seg / 60) + " min restantes";
+      }
+      $("proc-eta").textContent = eta;
+    },
+    fim(ok, msg) {
+      clearInterval(this.timer);
+      if (!this.aberto) return;
+      $("proc-titulo").textContent = ok ? "Pronto" : "A busca parou antes do fim";
+      $("proc-sub").textContent = msg;
+      $("proc-eta").textContent = "";
+      $("proc-atual-caixa").hidden = true;
+      $("proc-nota").hidden = true;
+      $("proc-pular").textContent = "Ver o ranking";
+      $("proc-pular").classList.add("primario");
+      if (ok) setTimeout(() => this.fechar(), 1500);
+    },
+    fechar() {
+      if (!this.aberto) return;
+      this.aberto = false;
+      $("proc").hidden = true;
+      document.body.style.overflow = "";
+      desenharPlanilha();
+      scrollTo({ top: 0 });
+    },
+  };
+  $("proc-pular").addEventListener("click", () => proc.fechar());
+
+  let buscandoPortais = false, buscarDeNovo = false;
   async function buscarPortais() {
-    if (buscandoPortais) return;
+    if (buscandoPortais) { buscarDeNovo = true; return; }
     buscandoPortais = true;
     try {
       const key = $("p-gemini").value.trim();
@@ -1803,77 +1937,130 @@
         .sort((a, b) => (b.desconto || 0) - (a.desconto || 0));
       if (!alvo.length) return statusIA("Todos os lotes em exibição já têm preço de mercado ✓.");
 
+      proc.abrir(alvo.length);
       let nOk = 0;
+      const valido = v => v > 10000 && v < 100000000;
+      const redesenha = () => { if (!proc.aberto) desenharPlanilha(); };
+      const espera = ms => new Promise(ok => setTimeout(ok, ms));
       try {
         /* etapa 1: tenta a busca REAL (anúncio do mesmo perfil/rua, sem leilão) */
-        let buscaReal = false;
+        let buscaReal = false, usouReal = false;
         statusIA("Testando busca de anúncios reais nos portais…");
+        proc.fase("Busca ao vivo nos portais",
+          "Procurando anúncios de venda com o mesmo perfil de cada imóvel: mesma rua ou condomínio, mesma área, quartos e garagem. Anúncios de leilão ficam de fora.");
+        proc.girar([alvo[0]]);
         try {
           const r0 = await buscaRealLote(alvo[0]);
-          if (r0 && r0.valor > 10000 && r0.valor < 100000000) {
+          if (r0 && valido(r0.valor)) {
             aplica(alvo[0].id, r0.valor, r0.resumo);
             nOk++;
-            buscaReal = r0._buscou === true;
+            buscaReal = usouReal = r0._buscou === true;
+            proc.feito(alvo[0], r0.valor);
+            proc.avanca(1);
           }
         } catch (e0) {
           if (e0.message === "SEM_BACKEND" || e0 instanceof TypeError) throw e0;
         }
+        proc.parar([alvo[0]]);
         if (buscaReal) {
           const maxReal = Math.min(alvo.length, 150);
           for (let i = 1; i < maxReal && buscaReal; i++) {
             statusIA("Anúncios REAIS do mesmo perfil (rua/condomínio, sem leilão): " +
               (i + 1) + "/" + maxReal + "…");
+            proc.girar([alvo[i]]);
             try {
               const r = await buscaRealLote(alvo[i]);
-              if (r && r.valor > 10000 && r.valor < 100000000) {
+              if (r && valido(r.valor)) {
                 aplica(alvo[i].id, r.valor, r.resumo);
                 nOk++;
+                proc.feito(alvo[i], r.valor);
+                proc.avanca(1);
                 if (r._buscou === false) buscaReal = false; // cota de busca acabou
               }
             } catch (eReal) {
               if (/429|[Cc]ota/.test(String(eReal.message))) { buscaReal = false; }
             }
-            if (i % 8 === 0) { salva(); desenharPlanilha(); }
+            proc.parar([alvo[i]]);
+            if (i % 8 === 0) { salva(); redesenha(); }
           }
           salva();
-          desenharPlanilha();
+          redesenha();
         }
 
-        /* etapa 2: o restante em blocos de 40 (estimativa pela ficha) */
+        /* etapa 2: o restante em blocos de 40 (estimativa pela ficha), 2 blocos por vez */
         alvo = alvo.filter(d => !(valoresIA[String(d.id)] > 0));
-        const TAM = 40;
-        for (let i = 0; i < alvo.length; i += TAM) {
-          const chunk = alvo.slice(i, i + TAM);
-          statusIA("Precificando pela ficha de cada imóvel (sem leilão): " +
-            Math.min(i + TAM, alvo.length) + "/" + alvo.length + "…");
-          const arr = await estimarBloco(chunk.map(d => 'id "' + d.id + '": ' + fichaDe(d)));
-          (arr || []).forEach(o => {
-            if (o && o.id && o.valor > 10000 && o.valor < 100000000) {
-              const id = String(o.id).trim();
-              valoresIA[id] = o.valor;
-              if (!fontesIA[id]) fontesIA[id] = "estimado pela ficha (tipo, área, quartos, garagem, rua) — mercado tradicional, sem leilão";
-              nOk++;
-            }
-          });
-          salva();
-          desenharPlanilha();
+        if (alvo.length) {
+          proc.fase("Estimativa pelo perfil de cada imóvel",
+            (usouReal ? "A cota de busca ao vivo do Google acabou. " : "A busca ao vivo do Google não está disponível nesta chave agora. ") +
+            "A IA estima o valor de venda pelo tipo, endereço, área, quartos e garagem de cada imóvel, sem usar preços de leilão.");
         }
+        const TAM = 40, blocos = [];
+        for (let i = 0; i < alvo.length; i += TAM) blocos.push(alvo.slice(i, i + TAM));
+        let prox = 0, feitosEtapa2 = 0, falha = null;
+        const trabalhador = async () => {
+          while (prox < blocos.length && !falha) {
+            const chunk = blocos[prox++];
+            const linhas = chunk.map(d => 'id "' + d.id + '": ' + fichaDe(d));
+            proc.girar(chunk);
+            let arr = null;
+            try {
+              arr = await estimarBloco(linhas);
+            } catch (e1) {
+              // limite por minuto do Google: espera e tenta o mesmo bloco mais uma vez
+              if (/429|[Cc]ota|muitas consultas/.test(String(e1.message)) && !falha) {
+                await espera(20000);
+                try { arr = await estimarBloco(linhas); } catch (e2) { falha = e2; }
+              } else { falha = e1; }
+            }
+            proc.parar(chunk);
+            if (!arr) continue;
+            const porId = new Map(chunk.map(d => [String(d.id).trim(), d]));
+            const amostra = [];
+            arr.forEach(o => {
+              if (o && o.id && valido(o.valor)) {
+                const id = String(o.id).trim();
+                valoresIA[id] = o.valor;
+                if (!fontesIA[id]) fontesIA[id] = "estimado pela ficha (tipo, área, quartos, garagem, rua) — mercado tradicional, sem leilão";
+                nOk++;
+                if (amostra.length < 3 && porId.has(id)) amostra.push([porId.get(id), o.valor]);
+              }
+            });
+            amostra.forEach(([d, v], k) => setTimeout(() => proc.feito(d, v), k * 180));
+            feitosEtapa2 += chunk.length;
+            proc.avanca(chunk.length);
+            statusIA("Precificando pela ficha de cada imóvel (sem leilão): " +
+              Math.min(feitosEtapa2, alvo.length) + "/" + alvo.length + "…");
+            salva();
+            redesenha();
+          }
+        };
+        await Promise.all([trabalhador(), trabalhador()]);
+        if (falha) throw falha;
         statusIA(nOk + " lotes precificados pelo mercado ✓ — coluna Base = \"Mercado (IA)\". " +
           "Detalhe de cada lote mostra a referência usada.");
+        proc.fim(true, nOk.toLocaleString("pt-BR") + (nOk === 1 ? " imóvel" : " imóveis") +
+          " com valor de venda de mercado. Abrindo o ranking com ROI e lance máximo…");
+        redesenha();
       } catch (e) {
         const parcial = nOk ? nOk + " lotes precificados antes de parar. " : "";
+        let msg;
         if (e.message === "SEM_BACKEND") {
-          statusIA(parcial + "Este endereço não tem o backend da IA — use o site na Vercel ou cole sua chave.");
+          msg = parcial + "Este endereço não tem o backend da IA — use o site na Vercel ou cole sua chave.";
         } else if (e instanceof TypeError) {
-          statusIA(parcial + "Esta prévia bloqueia chamadas externas — no site da Vercel funciona.");
+          msg = parcial + "Esta prévia bloqueia chamadas externas — no site da Vercel funciona.";
         } else {
-          statusIA(parcial + "Parou: " + String(e.message).slice(0, 150));
+          msg = parcial + "Parou: " + String(e.message).slice(0, 150);
         }
-        if (nOk) desenharPlanilha();
+        statusIA(msg);
+        proc.fim(false, msg + " Os imóveis sem valor de mercado usam a avaliação do banco no ranking.");
+        redesenha();
       }
-    } finally { buscandoPortais = false; }
+    } finally {
+      buscandoPortais = false;
+      if (buscarDeNovo) { buscarDeNovo = false; buscarPortais(); }
+    }
   }
-  $("btn-ia").addEventListener("click", buscarPortais);
+  $("btn-ia").addEventListener("click", () => buscarPortais());
 
   /* ============ upload ============ */
   const zona = $("zona"), arquivo = $("arquivo"), erro = $("erro");
@@ -1912,10 +2099,11 @@
     $("aba-" + resultado.formato).hidden = false;
     $("aba-favoritos").hidden = false;
     plLoteSelecionado = null;
+    plFiltros.classe = null;
     mostrarVista(resultado.formato);
-    // busca automática: já traz o preço de venda dos portais pela IA
-    statusIA("Planilha carregada — buscando preços de venda nos portais automaticamente…");
-    setTimeout(buscarPortais, 600);
+    // busca automática: abre a tela de processamento e só então entrega o ranking
+    statusIA("Planilha carregada — buscando o valor de venda de cada imóvel…");
+    buscarPortais();
   }
 
   /* busca direta: baixa a lista oficial da Caixa pelo backend (sem planilha) */
