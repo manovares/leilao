@@ -1945,62 +1945,20 @@
       const redesenha = () => { if (!proc.aberto) desenharPlanilha(); };
       const espera = ms => new Promise(ok => setTimeout(ok, ms));
       try {
-        /* etapa 1: tenta a busca REAL (anúncio do mesmo perfil/rua, sem leilão) */
-        let buscaReal = false, usouReal = false;
-        statusIA("Testando busca de anúncios reais nos portais…");
-        proc.fase("Preparando a busca",
-          "Verificando se a busca ao vivo nos portais está disponível. Isso pode levar até meio minuto.");
-        proc.girar([alvo[0]]);
-        try {
-          const r0 = await buscaRealLote(alvo[0]);
-          if (r0 && valido(r0.valor)) {
-            aplica(alvo[0].id, r0.valor, r0.resumo);
-            nOk++;
-            buscaReal = usouReal = r0._buscou === true;
-            proc.feito(alvo[0], r0.valor);
-            proc.avanca(1);
-          }
-        } catch (e0) {
-          if (e0.message === "SEM_BACKEND" || e0 instanceof TypeError) throw e0;
-        }
-        proc.parar([alvo[0]]);
-        if (buscaReal) {
-          proc.fase("Busca ao vivo nos portais",
-            "Procurando anúncios de venda com o mesmo perfil de cada imóvel: mesma rua ou condomínio, mesma área, quartos e garagem. Anúncios de leilão ficam de fora.");
-          const maxReal = Math.min(alvo.length, 150);
-          for (let i = 1; i < maxReal && buscaReal; i++) {
-            statusIA("Anúncios REAIS do mesmo perfil (rua/condomínio, sem leilão): " +
-              (i + 1) + "/" + maxReal + "…");
-            proc.girar([alvo[i]]);
-            try {
-              const r = await buscaRealLote(alvo[i]);
-              if (r && valido(r.valor)) {
-                aplica(alvo[i].id, r.valor, r.resumo);
-                nOk++;
-                proc.feito(alvo[i], r.valor);
-                proc.avanca(1);
-                if (r._buscou === false) buscaReal = false; // cota de busca acabou
-              }
-            } catch (eReal) {
-              if (/429|[Cc]ota/.test(String(eReal.message))) { buscaReal = false; }
-            }
-            proc.parar([alvo[i]]);
-            if (i % 8 === 0) { salva(); redesenha(); }
-          }
-          salva();
-          redesenha();
-        }
+        /* TUDO DE UMA VEZ: a estimativa de todos os lotes sai já, em blocos de 40
+           (3 blocos ao mesmo tempo), enquanto uma sonda testa em paralelo se a
+           busca ao vivo nos portais está disponível. */
+        const precificados = new Set();
+        statusIA("Buscando o valor de venda de " + alvo.length + " imóveis de uma vez…");
+        proc.fase("Todos os imóveis de uma vez",
+          "A IA calcula o valor de venda de cada imóvel pelo tipo, endereço, área, quartos e garagem, sem usar preços de leilão. " +
+          "Ao mesmo tempo, o site testa se a busca ao vivo nos portais está disponível.");
 
-        /* etapa 2: o restante em blocos de 40 (estimativa pela ficha), 2 blocos por vez */
-        alvo = alvo.filter(d => !(valoresIA[String(d.id)] > 0));
-        if (alvo.length) {
-          proc.fase("Estimativa pelo perfil de cada imóvel",
-            (usouReal ? "A cota de busca ao vivo do Google acabou. " : "A busca ao vivo do Google não está disponível nesta chave agora. ") +
-            "A IA estima o valor de venda pelo tipo, endereço, área, quartos e garagem de cada imóvel, sem usar preços de leilão.");
-        }
+        const sonda = buscaRealLote(alvo[0]).then(r => ({ r }), e => ({ e }));
+
         const TAM = 40, blocos = [];
         for (let i = 0; i < alvo.length; i += TAM) blocos.push(alvo.slice(i, i + TAM));
-        let prox = 0, feitosEtapa2 = 0, falha = null;
+        let prox = 0, feitosBlocos = 0, falha = null;
         const trabalhador = async () => {
           while (prox < blocos.length && !falha) {
             const chunk = blocos[prox++];
@@ -2025,21 +1983,64 @@
                 const id = String(o.id).trim();
                 valoresIA[id] = o.valor;
                 if (!fontesIA[id]) fontesIA[id] = "estimado pela ficha (tipo, área, quartos, garagem, rua) — mercado tradicional, sem leilão";
-                nOk++;
+                precificados.add(id);
                 if (amostra.length < 3 && porId.has(id)) amostra.push([porId.get(id), o.valor]);
               }
             });
+            nOk = precificados.size;
             amostra.forEach(([d, v], k) => setTimeout(() => proc.feito(d, v), k * 180));
-            feitosEtapa2 += chunk.length;
+            feitosBlocos += chunk.length;
             proc.avanca(chunk.length);
-            statusIA("Precificando pela ficha de cada imóvel (sem leilão): " +
-              Math.min(feitosEtapa2, alvo.length) + "/" + alvo.length + "…");
+            statusIA("Valor de venda pela ficha de cada imóvel (sem leilão): " +
+              Math.min(feitosBlocos, alvo.length) + "/" + alvo.length + "…");
             salva();
             redesenha();
           }
         };
-        await Promise.all([trabalhador(), trabalhador()]);
+        await Promise.all([trabalhador(), trabalhador(), trabalhador()]);
         if (falha) throw falha;
+
+        /* resultado da sonda: se a busca ao vivo existe, refina com anúncios reais.
+           Se a sonda ainda não respondeu 8s depois de tudo pronto, a busca ao vivo
+           não está disponível (é o caminho lento, que cai em estimativa). */
+        const s0 = await Promise.race([sonda, espera(8000).then(() => ({ lento: true }))]);
+        if (s0.e && (s0.e.message === "SEM_BACKEND" || s0.e instanceof TypeError)) throw s0.e;
+        let buscaReal = false;
+        if (s0.r && valido(s0.r.valor)) {
+          aplica(alvo[0].id, s0.r.valor, s0.r.resumo);
+          precificados.add(String(alvo[0].id).trim());
+          buscaReal = s0.r._buscou === true;
+        }
+        if (buscaReal) {
+          const maxReal = Math.min(alvo.length, 150);
+          proc.total = maxReal; proc.feitos = 1; proc.inicio = Date.now(); proc.pinta();
+          proc.fase("Busca ao vivo nos portais",
+            "Todos os imóveis já têm uma estimativa. Agora o site procura anúncios de venda reais do mesmo perfil (mesma rua ou condomínio, área, quartos e garagem, sem leilão) para os " +
+            maxReal + " lotes com maior desconto.");
+          proc.feito(alvo[0], s0.r.valor);
+          for (let i = 1; i < maxReal && buscaReal; i++) {
+            statusIA("Anúncios REAIS do mesmo perfil (rua/condomínio, sem leilão): " +
+              (i + 1) + "/" + maxReal + "…");
+            proc.girar([alvo[i]]);
+            try {
+              const r = await buscaRealLote(alvo[i]);
+              if (r && valido(r.valor)) {
+                aplica(alvo[i].id, r.valor, r.resumo);
+                precificados.add(String(alvo[i].id).trim());
+                proc.feito(alvo[i], r.valor);
+                if (r._buscou === false) buscaReal = false; // cota de busca acabou
+              }
+            } catch (eReal) {
+              if (/429|[Cc]ota/.test(String(eReal.message))) { buscaReal = false; }
+            }
+            proc.parar([alvo[i]]);
+            proc.avanca(1);
+            if (i % 8 === 0) { salva(); redesenha(); }
+          }
+          proc.total = alvo.length; proc.feitos = alvo.length; proc.pinta();
+        }
+        salva();
+        nOk = precificados.size;
         statusIA(nOk + " lotes precificados pelo mercado ✓ — coluna Base = \"Mercado (IA)\". " +
           "Detalhe de cada lote mostra a referência usada.");
         proc.fim(true, nOk.toLocaleString("pt-BR") + (nOk === 1 ? " imóvel" : " imóveis") +
