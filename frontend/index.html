@@ -273,8 +273,9 @@
     <div class="zona busca-direta" style="margin-top:14px">
       <div class="icone">🔎</div>
       <div class="principal">…ou busque direto, sem planilha</div>
-      <div class="apoio">O site baixa agora a <b>lista oficial de imóveis da Caixa</b> do estado escolhido
-        e analisa tudo na hora — mesmos custos, classes e alertas.</div>
+      <div class="apoio">O site tenta baixar agora a <b>lista oficial de imóveis da Caixa</b> do estado escolhido
+        e analisa tudo na hora — mesmos custos, classes e alertas. Se a Caixa pedir verificação
+        anti-robô, mostramos o caminho em 2 cliques.</div>
       <div style="margin-top:10px; display:flex; gap:10px; justify-content:center; align-items:center; flex-wrap:wrap">
         <select id="bd-uf" class="botao" style="padding:8px 12px">
           <option value="SP" selected>São Paulo (SP)</option>
@@ -1675,8 +1676,11 @@
         new Date().toLocaleDateString("pt-BR") + ")");
     } catch (e) {
       st.textContent = "";
-      erro.innerHTML = "⚠️ Busca direta falhou: " + e.message +
-        ". Dá para baixar a lista manualmente em venda-imoveis.caixa.gov.br e arrastar aqui.";
+      erro.innerHTML = "⚠️ A Caixa pediu verificação anti-robô e barrou o download automático (" +
+        e.message + "). <b>Plano B em 2 cliques:</b> " +
+        '<a href="https://venda-imoveis.caixa.gov.br/sistema/download-lista.asp" target="_blank" rel="noopener">' +
+        "1) abra a página oficial de download ↗</a>, escolha o estado e baixe o arquivo; " +
+        "2) arraste o arquivo baixado aqui em cima — a análise é a mesma.";
       erro.hidden = false;
     } finally { b.disabled = false; }
   });
