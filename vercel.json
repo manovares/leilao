@@ -1,6 +1,7 @@
 {
   "buildCommand": "",
   "outputDirectory": "frontend",
+  "regions": ["gru1"],
   "functions": {
     "api/*.js": { "maxDuration": 120 }
   }

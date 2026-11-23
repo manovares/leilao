@@ -33,19 +33,42 @@ module.exports = async (req, res) => {
     return res.status(200).send(emCache.csv);
   }
 
+  const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+  const COMUNS = {
+    "User-Agent": UA,
+    "Accept": "text/html,application/xhtml+xml,text/csv,text/plain,*/*;q=0.8",
+    "Accept-Language": "pt-BR,pt;q=0.9",
+  };
   try {
+    // 1) visita a página de download para receber os cookies do site
+    let cookies = "";
+    try {
+      const r0 = await fetch("https://venda-imoveis.caixa.gov.br/sistema/download-lista.asp", {
+        headers: COMUNS, signal: AbortSignal.timeout(30000), redirect: "follow",
+      });
+      cookies = (r0.headers.getSetCookie ? r0.headers.getSetCookie() : [])
+        .map(c => c.split(";")[0]).join("; ");
+      if (req.query && req.query.debug) {
+        var dbg = { pagina: r0.status, cookies: cookies ? cookies.split("; ").map(c => c.split("=")[0]) : [] };
+      }
+    } catch (e) { /* sem cookies: tenta mesmo assim */ }
+
+    // 2) baixa o CSV com os cookies e o referer corretos
     const r = await fetch(
       "https://venda-imoveis.caixa.gov.br/listaweb/Lista_imoveis_" + uf + ".csv",
       {
         headers: {
-          // o site da Caixa recusa clientes sem cara de navegador
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-          "Accept": "text/csv,text/plain,*/*",
-          "Referer": "https://venda-imoveis.caixa.gov.br/sistema/busca-imovel.asp",
+          ...COMUNS,
+          "Referer": "https://venda-imoveis.caixa.gov.br/sistema/download-lista.asp",
+          ...(cookies ? { "Cookie": cookies } : {}),
         },
         signal: AbortSignal.timeout(45000),
       },
     );
+    if (req.query && req.query.debug) {
+      return res.status(200).json({ ...(dbg || {}), csv_status: r.status,
+        tipo: r.headers.get("content-type") });
+    }
     if (!r.ok) {
       return res.status(502).json({ erro: "o site da Caixa respondeu " + r.status + " — tente de novo em instantes" });
     }
