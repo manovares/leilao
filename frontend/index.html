@@ -1779,10 +1779,10 @@
   const localCurto = d => [d.endereco ? titulo(d.endereco) : (d.bairro ? titulo(d.bairro) : ""), d.cidade]
     .filter(Boolean).join(", ");
   const proc = {
-    aberto: false, total: 0, feitos: 0, inicio: 0, pool: [], ix: 0, timer: null,
+    aberto: false, total: 0, feitos: 0, inicio: 0, pool: [], ix: 0, timer: null, pausaAte: 0,
     abrir(total) {
       this.aberto = true; this.total = total; this.feitos = 0; this.inicio = Date.now();
-      this.pool = []; this.ix = 0;
+      this.pool = []; this.ix = 0; this.pausaAte = 0;
       $("proc-titulo").textContent = "Buscando o valor de venda de cada imóvel";
       $("proc-sub").textContent = "";
       $("proc-feed").innerHTML = "";
@@ -1797,12 +1797,18 @@
       clearInterval(this.timer);
       const calmo = matchMedia("(prefers-reduced-motion: reduce)").matches;
       this.timer = setInterval(() => {
+        const falta = Math.ceil((this.pausaAte - Date.now()) / 1000);
+        if (falta > 0) {
+          $("proc-atual").textContent = "O Google pediu uma pausa nas consultas. Retomando em " + falta + " s…";
+          return;
+        }
         if (!this.pool.length) return;
         const d = this.pool[this.ix++ % this.pool.length];
         $("proc-atual").textContent = fichaCurta(d) + " — " + localCurto(d);
       }, calmo ? 1500 : 240);
       $("proc-pular").focus();
     },
+    pausa(ms) { this.pausaAte = Math.max(this.pausaAte, Date.now() + ms); },
     fase(rotulo, sub) { $("proc-fase").textContent = rotulo; $("proc-sub").textContent = sub; },
     girar(lotes) { this.pool.push(...lotes); },
     parar(lotes) { const fora = new Set(lotes); this.pool = this.pool.filter(d => !fora.has(d)); },
@@ -1830,10 +1836,10 @@
       }
       $("proc-eta").textContent = eta;
     },
-    fim(ok, msg) {
+    fim(ok, msg, tituloFim) {
       clearInterval(this.timer);
       if (!this.aberto) return;
-      $("proc-titulo").textContent = ok ? "Pronto" : "A busca parou antes do fim";
+      $("proc-titulo").textContent = tituloFim || (ok ? "Pronto" : "A busca parou antes do fim");
       $("proc-sub").textContent = msg;
       $("proc-eta").textContent = "";
       $("proc-atual-caixa").hidden = true;
@@ -1961,30 +1967,55 @@
 
         const sonda = buscaRealLote(alvo[0]).then(r => ({ r }), e => ({ e }));
 
-        const TAM = 20, blocos = [];
-        for (let i = 0; i < alvo.length; i += TAM) blocos.push(alvo.slice(i, i + TAM));
-        let prox = 0, feitosBlocos = 0, falha = null;
-        const trabalhador = async () => {
-          while (prox < blocos.length && !falha) {
-            const chunk = blocos[prox++];
+        /* fila adaptativa: começa com 4 pacotes ao mesmo tempo; quando o Google
+           limita ou fica sobrecarregado (429/503), todos pausam juntos, a fila cai
+           para 2 e depois 1 pacote por vez, e o pacote volta para o fim da fila.
+           Depois de 3 acertos seguidos, volta a acelerar até 4.
+           Só desiste de um pacote após 5 tentativas, e só para tudo se 8 falhas
+           seguidas acontecerem sem nenhum acerto (cota do dia esgotada). */
+        const TAM = 20, fila = [];
+        for (let i = 0; i < alvo.length; i += TAM) fila.push({ chunk: alvo.slice(i, i + TAM), tent: 0 });
+        const PAUSA_MS = 15000;
+        let ativos = 4, falhasSeguidas = 0, acertosSeguidos = 0, pausaGlobal = 0, feitosBlocos = 0, erroFatal = null, emCurso = 0;
+        const desistidos = [];
+        // o trabalhador 0 só sai quando não há nada na fila NEM em andamento: um
+        // pacote que falhar por último ainda tem quem tente de novo
+        const trabalhador = async n => {
+          while ((fila.length || (n === 0 && emCurso)) && !erroFatal) {
+            if (n > 0 && n >= ativos) { await espera(1000); continue; }
+            const aguardar = pausaGlobal - Date.now();
+            if (aguardar > 0) { await espera(aguardar); continue; }
+            if (!fila.length) { await espera(300); continue; }
+            const item = fila.shift();
+            emCurso++;
+            const chunk = item.chunk;
             const linhas = chunk.map(d => 'id "' + d.id + '": ' + fichaDe(d));
             proc.girar(chunk);
             let arr = null;
-            // limite por minuto do Google ou resposta que não veio: espera e tenta o
-            // mesmo bloco de novo (20 s, 40 s, 60 s) antes de desistir
-            for (let tentativa = 0; !arr && !falha; tentativa++) {
-              try {
-                arr = await estimarBloco(linhas);
-                if (!Array.isArray(arr)) throw new Error("resposta inválida da IA");
-              } catch (e1) {
-                arr = null;
-                const passageiro = /429|[Cc]ota|muitas consultas|inválida|20s|408|503/.test(String(e1.message));
-                if (!passageiro || tentativa >= 3) { falha = e1; break; }
-                await espera(20000 * (tentativa + 1));
-              }
+            try {
+              arr = await estimarBloco(linhas);
+              if (!Array.isArray(arr)) throw new Error("resposta inválida da IA");
+            } catch (e1) {
+              emCurso--;
+              proc.parar(chunk);
+              if (e1.message === "SEM_BACKEND" || e1 instanceof TypeError) { erroFatal = e1; break; }
+              item.tent++;
+              falhasSeguidas++;
+              if (falhasSeguidas >= 8) { erroFatal = e1; break; }
+              if (item.tent >= 5) desistidos.push(item);
+              else fila.push(item);
+              const pausa = Math.min(4 * PAUSA_MS, PAUSA_MS * Math.min(falhasSeguidas, 4));
+              pausaGlobal = Math.max(pausaGlobal, Date.now() + pausa);
+              proc.pausa(pausa);
+              ativos = Math.max(1, Math.min(ativos - 1, 2));
+              acertosSeguidos = 0;
+              continue;
             }
+            emCurso--;
             proc.parar(chunk);
-            if (!arr) continue;
+            falhasSeguidas = 0;
+            // Google normalizou: volta a mandar mais pacotes ao mesmo tempo
+            if (++acertosSeguidos >= 3 && ativos < 4) { ativos++; acertosSeguidos = 0; }
             const porId = new Map(chunk.map(d => [String(d.id).trim(), d]));
             const amostra = [];
             arr.forEach(o => {
@@ -2006,8 +2037,8 @@
             redesenha();
           }
         };
-        await Promise.all([trabalhador(), trabalhador(), trabalhador(), trabalhador()]);
-        if (falha) throw falha;
+        await Promise.all([0, 1, 2, 3].map(trabalhador));
+        if (erroFatal) throw erroFatal;
 
         /* resultado da sonda: se a busca ao vivo existe, refina com anúncios reais.
            A sonda tem 15 s desde o início; se não respondeu até lá, a busca ao vivo
@@ -2053,8 +2084,17 @@
         nOk = precificados.size;
         statusIA(nOk + " lotes precificados pelo mercado ✓ — coluna Base = \"Mercado (IA)\". " +
           "Detalhe de cada lote mostra a referência usada.");
-        proc.fim(true, nOk.toLocaleString("pt-BR") + (nOk === 1 ? " imóvel" : " imóveis") +
-          " com valor de venda de mercado. Abrindo o ranking com ROI e lance máximo…");
+        const semValor = alvo.filter(d => !precificados.has(String(d.id).trim())).length;
+        if (semValor) {
+          proc.fim(false, nOk.toLocaleString("pt-BR") + " de " + alvo.length.toLocaleString("pt-BR") +
+            " imóveis com valor de venda de mercado. " + semValor.toLocaleString("pt-BR") +
+            (semValor === 1 ? " ficou" : " ficaram") + " com a avaliação do banco porque o Google não respondeu. " +
+            "Para tentar só esses de novo, clique em \"Precificar pelo mercado (IA)\" no ranking.", "Quase tudo pronto");
+          statusIA(semValor + " lotes ainda sem preço de mercado — clique para tentar de novo.");
+        } else {
+          proc.fim(true, nOk.toLocaleString("pt-BR") + (nOk === 1 ? " imóvel" : " imóveis") +
+            " com valor de venda de mercado. Abrindo o ranking com ROI e lance máximo…");
+        }
         redesenha();
       } catch (e) {
         const parcial = nOk ? nOk + " lotes precificados antes de parar. " : "";
