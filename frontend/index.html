@@ -1946,8 +1946,8 @@
         /* etapa 1: tenta a busca REAL (anúncio do mesmo perfil/rua, sem leilão) */
         let buscaReal = false, usouReal = false;
         statusIA("Testando busca de anúncios reais nos portais…");
-        proc.fase("Busca ao vivo nos portais",
-          "Procurando anúncios de venda com o mesmo perfil de cada imóvel: mesma rua ou condomínio, mesma área, quartos e garagem. Anúncios de leilão ficam de fora.");
+        proc.fase("Preparando a busca",
+          "Verificando se a busca ao vivo nos portais está disponível. Isso pode levar até meio minuto.");
         proc.girar([alvo[0]]);
         try {
           const r0 = await buscaRealLote(alvo[0]);
@@ -1963,6 +1963,8 @@
         }
         proc.parar([alvo[0]]);
         if (buscaReal) {
+          proc.fase("Busca ao vivo nos portais",
+            "Procurando anúncios de venda com o mesmo perfil de cada imóvel: mesma rua ou condomínio, mesma área, quartos e garagem. Anúncios de leilão ficam de fora.");
           const maxReal = Math.min(alvo.length, 150);
           for (let i = 1; i < maxReal && buscaReal; i++) {
             statusIA("Anúncios REAIS do mesmo perfil (rua/condomínio, sem leilão): " +
