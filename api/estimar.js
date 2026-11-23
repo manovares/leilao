@@ -84,15 +84,25 @@ async function gerar(chave, modelo, prompt, comBusca) {
 // cota de geração costuma existir mesmo quando a de pesquisa acaba
 let CAMINHO_BOM = { buscado: null, direto: null }; // memória por instância
 
-async function gerarComFallback(chave, prompt, comBusca) {
+// `dica`: modelo que funcionou para este navegador numa chamada anterior. Cada
+// chamada paralela pode cair numa instância fria, sem memória; a dica evita
+// redescobrir o modelo (que custava ~20 s por instância).
+async function gerarComFallback(chave, prompt, comBusca, dica) {
   let ultimoErro = null;
+  if (!comBusca && dica && !(CAMINHO_BOM.direto && CAMINHO_BOM.direto.modelo === dica)) {
+    try {
+      const texto = await gerar(chave, dica, prompt, false);
+      CAMINHO_BOM.direto = { modelo: dica, buscou: false };
+      return { texto, buscou: false, modelo: dica };
+    } catch (e) { /* dica desatualizada: segue o caminho normal */ }
+  }
   // atalho: reusa o que funcionou na última chamada (economiza ~30s por lote)
   const memo = comBusca ? CAMINHO_BOM.buscado : CAMINHO_BOM.direto;
   if (memo) {
     try {
       return { texto: await gerar(chave, memo.modelo, memo.buscou ? prompt
         : prompt + " (Não foi possível pesquisar na internet: estime pelo seu conhecimento do mercado local e diga no resumo que é estimativa sem busca.)",
-        memo.buscou), buscou: memo.buscou };
+        memo.buscou), buscou: memo.buscou, modelo: memo.modelo };
     } catch (e) { /* memória desatualizada: segue o caminho completo */ }
   }
   for (const modelo of (await candidatos(chave)).slice(0, 5)) {
@@ -100,7 +110,7 @@ async function gerarComFallback(chave, prompt, comBusca) {
       const texto = await gerar(chave, modelo, prompt, comBusca);
       if (comBusca) CAMINHO_BOM.buscado = { modelo, buscou: true };
       else CAMINHO_BOM.direto = { modelo, buscou: false };
-      return { texto, buscou: comBusca };
+      return { texto, buscou: comBusca, modelo };
     } catch (e) {
       ultimoErro = e;
       if (e.status === 404) continue;
@@ -112,7 +122,7 @@ async function gerarComFallback(chave, prompt, comBusca) {
             "conhecimento do mercado local e diga no resumo que é estimativa sem busca.)";
           const texto = await gerar(chave, modelo, promptSem, false);
           if (comBusca) CAMINHO_BOM.buscado = { modelo, buscou: false };
-          return { texto, buscou: false };
+          return { texto, buscou: false, modelo };
         } catch (e2) {
           ultimoErro = e2;
           continue; // tenta o próximo modelo
@@ -216,9 +226,11 @@ module.exports = async (req, res) => {
         "(em reais) de cada imóvel usado abaixo, realista para a localização e o tipo. " + SEM_LEILAO +
         'Responda SOMENTE com JSON válido: um array de objetos {"id": string, "valor": number}. ' +
         "Não escreva mais nada.\nImóveis:\n- " + imoveis.join("\n- ");
-    const saida = await gerarComFallback(chave, prompt, false);
+    const dica = typeof (req.body && req.body.dica) === "string" &&
+      /^gemini-[a-z0-9.-]{1,40}$/.test(req.body.dica) ? req.body.dica : "";
+    const saida = await gerarComFallback(chave, prompt, false, dica);
     try {
-      return res.status(200).json({ precos: JSON.parse(saida.texto || "") });
+      return res.status(200).json({ precos: JSON.parse(saida.texto || ""), modelo: saida.modelo });
     } catch (e) {
       return res.status(502).json({ erro: "resposta inválida da IA" });
     }

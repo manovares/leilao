@@ -1914,14 +1914,18 @@
           'Responda SOMENTE com JSON válido: um array de objetos {"id": string, "valor": number}. ' +
           "Não escreva mais nada.\nImóveis:\n- " + linhas.join("\n- ");
         if (key) return extrairJSON(await chamarGemini(key, prompt, false));
+        // manda o modelo que já funcionou antes: o servidor pula a redescoberta
+        let dica = "";
+        try { dica = localStorage.getItem("modelo_ia_v1") || ""; } catch (e) { /* sem storage */ }
         const r = await fetch("api/estimar", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ imoveis: linhas }),
+          body: JSON.stringify(dica ? { imoveis: linhas, dica } : { imoveis: linhas }),
         });
         if (r.status === 404 || r.status === 405 || r.status === 501) throw new Error("SEM_BACKEND");
         const j = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(j.erro || "servidor respondeu " + r.status);
+        if (j.modelo) { try { localStorage.setItem("modelo_ia_v1", j.modelo); } catch (e) { /* sem storage */ } }
         return j.precos;
       }
 
@@ -2006,9 +2010,10 @@
         if (falha) throw falha;
 
         /* resultado da sonda: se a busca ao vivo existe, refina com anúncios reais.
-           Se a sonda ainda não respondeu 8s depois de tudo pronto, a busca ao vivo
+           A sonda tem 15 s desde o início; se não respondeu até lá, a busca ao vivo
            não está disponível (é o caminho lento, que cai em estimativa). */
-        const s0 = await Promise.race([sonda, espera(8000).then(() => ({ lento: true }))]);
+        const s0 = await Promise.race([sonda,
+          espera(Math.max(0, 15000 - (Date.now() - proc.inicio))).then(() => ({ lento: true }))]);
         if (s0.e && (s0.e.message === "SEM_BACKEND" || s0.e instanceof TypeError)) throw s0.e;
         let buscaReal = false;
         if (s0.r && valido(s0.r.valor)) {
