@@ -202,6 +202,16 @@
   :root[data-theme="dark"] .chip.regular { color: var(--warning); }
   @media (prefers-color-scheme: dark) { :root:where(:not([data-theme="light"])) .chip.regular { color: var(--warning); } }
   .chip.evitar { color: var(--critical); background: rgba(208, 59, 59, 0.12); }
+  .chip.cA { color: var(--good-text); background: rgba(12, 163, 12, 0.12); }
+  .chip.cB { color: var(--accent); background: var(--accent-soft); }
+  .chip.cC { color: #8a6100; background: rgba(250, 178, 25, 0.16); }
+  :root[data-theme="dark"] .chip.cC { color: var(--warning); }
+  @media (prefers-color-scheme: dark) { :root:where(:not([data-theme="light"])) .chip.cC { color: var(--warning); } }
+  .chip.cD { color: var(--critical); background: rgba(208, 59, 59, 0.12); }
+  .chip.cP { color: var(--muted); background: rgba(128, 128, 128, 0.12); }
+  .vil-tag { display: inline-block; margin-left: 4px; font-size: 0.72rem; font-weight: 700;
+    color: var(--critical); border: 1px solid currentColor; border-radius: 6px; padding: 0 5px;
+    cursor: help; white-space: nowrap; }
   .zl-tag {
     display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 4px;
     font-size: 0.68rem; font-weight: 700; letter-spacing: 0.03em;
@@ -367,7 +377,7 @@
         </div>
         <span class="nota" id="sync-status" style="margin:0 0 6px"></span>
       </div>
-      <p class="nota" id="pl-tabela-nota">Ordenado pelos maiores descontos. Clique no cabeçalho para reordenar e em uma linha para o detalhamento de custos.</p>
+      <p class="nota" id="pl-tabela-nota">Ordenado pelo maior deságio efetivo (economia real sobre o mercado, com todos os custos). Clique no cabeçalho para reordenar e em uma linha para o detalhamento de custos.</p>
       <div class="rolagem">
         <table>
           <thead><tr id="pl-cabecalho"></tr></thead>
@@ -473,6 +483,27 @@
     if (retMensal <= 0.025) return "boa";
     return "excelente";
   }
+
+  /* classes do Radar Territorial — o que importa é o DESÁGIO EFETIVO:
+     1 − (custo total de aquisição ÷ valor de mercado). Deságio sobre a
+     avaliação não é oportunidade. Risco jurídico alto trava a classe em C. */
+  const DESAGIO_ALVO = 0.20; // deságio desejado ao calcular o lance máximo
+  function classeRadar(desagio, riscoAlto) {
+    if (!isFinite(desagio)) return "P";
+    let c = desagio >= 0.30 ? "A" : desagio >= 0.20 ? "B" : desagio >= 0.10 ? "C" : "D";
+    if (riscoAlto && (c === "A" || c === "B")) c = "C";
+    return c;
+  }
+  const TITULO_CLASSE = {
+    A: "Classe A — deságio efetivo de 30% ou mais sobre o mercado",
+    B: "Classe B — deságio efetivo entre 20% e 30%",
+    C: "Classe C — deságio efetivo entre 10% e 20% (ou risco jurídico alto)",
+    D: "Classe D — deságio efetivo abaixo de 10%: com todos os custos, sai quase pelo preço de mercado",
+    P: "Pendente — sem valor de mercado para comparar",
+  };
+  const chipClasse = (v, d) => `<span class="chip c${v}" title="${TITULO_CLASSE[v] || ""}">${v}</span>` +
+    (d && d.preco_vil ? ' <span class="vil-tag" title="Lance abaixo de 50% da avaliação — em leilão JUDICIAL há risco de anulação por preço vil (CPC, art. 891). Confira a modalidade no edital.">⚠ &lt;50%</span>' : "") +
+    (d && d.risco_alto ? ' <span class="vil-tag" title="Risco jurídico alto no anúncio (fração ideal, só direitos, sem matrícula ou usufruto) — classe travada em C. Leia o edital e a matrícula.">⚠ risco</span>' : "");
 
   /* custos da operação — +15% sobre o lance; em Venda Online/Direta não há
      leiloeiro, então a comissão (5%) sai dos extras */
@@ -733,6 +764,9 @@
         data_leilao_ts: lerDataBR(dataLeilao),
         link: /^https?:\/\//.test(pega(l, "link")) ? pega(l, "link") : "",
         ocupado, ocupacaoAssumida: semColunaOcupacao,
+        // sinais de risco jurídico no texto do anúncio: trava a classe em C
+        risco_alto: /\b(direitos (de|do|da|sobre)|fracao ideal|parte ideal|sem matricula|nua propriedade|usufruto)\b/
+          .test(normalizar(desc + " " + pega(l, "modalidade"))),
         distrito_zl: distritoZL(pega(l, "cidade"), pega(l, "bairro"), pega(l, "endereco")),
         zona_leste: !!distritoZL(pega(l, "cidade"), pega(l, "bairro"), pega(l, "endereco")),
         tipo_padrao: tipoPadrao(pega(l, "tipo") || daDesc.tipo),
@@ -751,9 +785,9 @@
 
   /* ============ vista: resultado da planilha ============ */
   const plOrdens = {
-    arrematador: { k: "desconto", asc: false },
-    caixa: { k: "desconto", asc: false },
-    favoritos: { k: "desconto", asc: false },
+    arrematador: { k: "desagio_efetivo", asc: false },
+    caixa: { k: "desagio_efetivo", asc: false },
+    favoritos: { k: "desagio_efetivo", asc: false },
   };
   let ultimaListaPlanilha = null; // conjunto filtrado em exibição (p/ IA por lote)
   // financiamento: 0 = todos, 1 = só quem aceita, -1 = só quem NÃO aceita
@@ -831,8 +865,17 @@
       const venda = (m.valor > 0 ? m.valor : l.valor_avaliacao) * pctVenda;
       const semLeiloeiro = /venda direta|venda online/.test(normalizar(l.modalidade || ""));
       const op = calcularOperacao(l.lance_minimo, venda, meses, l.ocupado, semLeiloeiro);
+      // Radar: deságio efetivo (economia real sobre o mercado, com TODOS os custos),
+      // lance máximo que ainda garante o deságio-alvo, e alerta de preço vil
+      const desagio_efetivo = venda > 0 ? 1 - op.investimento / venda : NaN;
+      const fixos = P.custo_juridico_fixo + op.desocupacao + op.posse;
+      const taxas = 1 + op.extrasPct + P.registro_cartorio;
+      const lance_max = Math.max(0, (venda * (1 - DESAGIO_ALVO) - fixos) / taxas);
+      const preco_vil = l.lance_minimo < 0.5 * l.valor_avaliacao;
       return { ...l, mercado_estimado: m.valor, fonte_venda: m.valor > 0 ? m.fonte : "avaliação",
-               venda, meses, semLeiloeiro, ...op, classificacao: classificar(op.retMensal) };
+               venda, meses, semLeiloeiro, ...op, desagio_efetivo, lance_max, preco_vil,
+               classe: classeRadar(desagio_efetivo, l.risco_alto),
+               classificacao: classificar(op.retMensal) };
     });
   }
 
@@ -848,11 +891,15 @@
       { k: "financiamento", t: "Financ.", esq: true, f: v => v ? "Sim" : "Não" },
       { k: "valor_avaliacao", t: "Avaliação", f: brl },
       { k: "lance_minimo", t: "Lance mín.", f: brl },
-      { k: "desconto", t: "Desconto", f: v => pct(v, 1) },
+      { k: "desconto", t: "Desc. s/ aval.", f: v => pct(v, 1) },
       { k: "investimento", t: "Custo total", f: brl },
       { k: "venda", t: "Venda estimada", f: brl },
       { k: "fonte_venda", t: "Base", esq: true, f: v => v === "portais"
         ? '<span class="positivo">Mercado (IA)</span>' : "Avaliação" },
+      { k: "desagio_efetivo", t: "Deságio efetivo", f: v =>
+        `<span class="${v >= 0.2 ? "positivo" : v < 0 ? "negativo" : ""}">${pct(v, 1)}</span>` },
+      { k: "classe", t: "Classe", esq: true, f: (v, d) => chipClasse(v, d) },
+      { k: "lance_max", t: "Lance máx. (20%)", f: v => v > 0 ? brl(v) : "—" },
       { k: "lucro", t: "Lucro líq.", f: v => `<span class="${v >= 0 ? "positivo" : "negativo"}">${brl(v)}</span>` },
       { k: "roi", t: "ROI", f: v => pct(v, 1) },
       { k: "classificacao", t: "Classificação", esq: true, f: chipCls },
@@ -933,19 +980,19 @@
 
     /* Zona Leste: card sempre visível + filtro opcional da vista inteira */
     const dadosZL = tudo.filter(d => d.zona_leste);
-    const zlTop = [...dadosZL].sort((a, b) => b.desconto - a.desconto).slice(0, 10);
+    const zlTop = [...dadosZL].sort((a, b) => b.desagio_efetivo - a.desagio_efetivo).slice(0, 10);
     $("zl-nota").textContent = dadosZL.length
       ? dadosZL.length + (dadosZL.length === 1 ? " lote" : " lotes") +
-        " da Zona Leste de São Paulo nesta planilha — maiores descontos abaixo. Clique numa barra para ver o lote na tabela, ou mude a Abrangência para \"Zona Leste\"."
+        " da Zona Leste de São Paulo nesta planilha — maiores deságios efetivos (economia real sobre o mercado) abaixo. Clique numa barra para ver o lote na tabela, ou mude a Abrangência para \"Zona Leste\"."
       : "Nenhum lote da Zona Leste de São Paulo foi identificado nesta planilha.";
-    const maxZL = Math.max(...zlTop.map(d => d.desconto), 0.0001);
+    const maxZL = Math.max(...zlTop.map(d => d.desagio_efetivo), 0.0001);
     $("zl-grafico").innerHTML = zlTop.map((d, ix) => {
-      const w = Math.max(2, d.desconto / maxZL * 100);
+      const w = Math.max(2, d.desagio_efetivo / maxZL * 100);
       const nome = d.id + (d.bairro ? " · " + titulo(d.bairro) : "");
       return `<div class="linha-barra" data-ix="${ix}">
         <div class="nome">${nome}</div>
         <div class="pista"><div class="barra" style="width:${w * 0.75}%"></div>
-          <div class="barra-valor" style="left:calc(${w * 0.75}% + 8px)">${pct(d.desconto, 1)}</div>
+          <div class="barra-valor" style="left:calc(${w * 0.75}% + 8px)">${pct(d.desagio_efetivo, 1)} · ${d.classe}</div>
         </div></div>`;
     }).join("");
     $("zl-grafico").onmousemove = ev => {
@@ -956,6 +1003,7 @@
         <div class="l"><span>Avaliação</span><span>${brl(d.valor_avaliacao)}</span></div>
         <div class="l"><span>Lance mínimo</span><span>${brl(d.lance_minimo)}</span></div>
         <div class="l"><span>Custo total (+15%)</span><span>${brl(d.investimento)}</span></div>
+        <div class="l"><span>Deságio efetivo · classe</span><span>${pct(d.desagio_efetivo, 1)} · ${d.classe}</span></div>
         <div class="l"><span>Lucro estimado</span><span>${brl(d.lucro)}</span></div>`);
     };
     $("zl-grafico").onmouseleave = esconderDica;
@@ -986,35 +1034,33 @@
 
     const ROTULO_ESCOPO = { zl: " · Zona Leste (SP)", capital: " · Capital SP", praias: " · Praias SP", estado: " · Estado de SP", brasil: "" };
     plColunas = montarColunas(dados);
-    if (!plColunas.some(c => c.k === plOrdem.k)) plOrdem.k = "desconto";
+    if (!plColunas.some(c => c.k === plOrdem.k)) plOrdem.k = "desagio_efetivo";
     $("pl-titulo").textContent = "Ranking — " + ROTULO_SLOT[slotAtivo] + (ROTULO_ESCOPO[escopo] || "") +
       (termoRegiao ? ' · região "' + $("p-regiao").value.trim() + '"' : "");
-    const porDesconto = [...dados].sort((a, b) => b.desconto - a.desconto);
+    const porDesagio = [...dados].sort((a, b) => b.desagio_efetivo - a.desagio_efetivo);
 
-    /* KPIs — o desconto médio só considera lotes com desconto real
-       (no 2º leilão o valor de venda pode superar a avaliação) */
-    const comDesconto = dados.filter(d => d.desconto > 0);
-    const descMedio = comDesconto.length
-      ? comDesconto.reduce((s, d) => s + d.desconto, 0) / comDesconto.length : 0;
-    const acima40 = dados.filter(d => d.desconto >= 0.4).length;
+    /* KPIs — a métrica que manda é o deságio EFETIVO (custo total vs. mercado):
+       deságio sobre a avaliação não é oportunidade */
+    const nClasse = c => dados.filter(d => d.classe === c).length;
+    const classesAB = nClasse("A") + nClasse("B");
     const melhorLucro = [...dados].sort((a, b) => b.lucro - a.lucro)[0];
     $("pl-tiles").innerHTML = [
       { r: "Lotes analisados", v: dados.length, a: planilha.nomeArquivo },
-      { r: "Maior desconto", v: pct(porDesconto[0].desconto, 1), a: porDesconto[0].id + (porDesconto[0].cidade ? " · " + porDesconto[0].cidade : "") },
-      { r: "Desconto médio (com desconto)", v: pct(descMedio, 1), a: comDesconto.length + " de " + dados.length + " lotes têm desconto; " + acima40 + " com 40%+" },
+      { r: "Maior deságio efetivo", v: pct(porDesagio[0].desagio_efetivo, 1), a: porDesagio[0].id + (porDesagio[0].cidade ? " · " + porDesagio[0].cidade : "") + " — economia real sobre o mercado, com todos os custos" },
+      { r: "Classes A + B", v: classesAB, a: nClasse("A") + " classe A (≥30%) e " + nClasse("B") + " classe B (20–30%); " + nClasse("C") + " classe C" },
       { r: "Maior lucro estimado", v: brl(melhorLucro.lucro), a: melhorLucro.id + " · ROI " + pct(melhorLucro.roi, 1) },
     ].map(t => `<div class="tile"><div class="rotulo">${t.r}</div><div class="valor">${t.v}</div><div class="apoio">${t.a}</div></div>`).join("");
 
-    /* gráfico top 10 por desconto */
-    const top10 = porDesconto.slice(0, 10);
-    const maxDesc = Math.max(...top10.map(d => d.desconto), 0.0001);
+    /* gráfico top 10 por deságio efetivo */
+    const top10 = porDesagio.slice(0, 10);
+    const maxDesc = Math.max(...top10.map(d => d.desagio_efetivo), 0.0001);
     $("pl-grafico").innerHTML = top10.map((d, ix) => {
-      const w = Math.max(2, d.desconto / maxDesc * 100);
+      const w = Math.max(2, d.desagio_efetivo / maxDesc * 100);
       const nome = d.id + (d.cidade ? " · " + d.cidade : "");
       return `<div class="linha-barra" data-ix="${ix}">
         <div class="nome">${nome}</div>
         <div class="pista"><div class="barra" style="width:${w * 0.75}%"></div>
-          <div class="barra-valor" style="left:calc(${w * 0.75}% + 8px)">${pct(d.desconto, 1)}</div>
+          <div class="barra-valor" style="left:calc(${w * 0.75}% + 8px)">${pct(d.desagio_efetivo, 1)} · ${d.classe}</div>
         </div></div>`;
     }).join("");
     $("pl-grafico").onmousemove = ev => {
@@ -1025,6 +1071,7 @@
         <div class="l"><span>Avaliação</span><span>${brl(d.valor_avaliacao)}</span></div>
         <div class="l"><span>Lance mínimo</span><span>${brl(d.lance_minimo)}</span></div>
         <div class="l"><span>Custo total (+15%)</span><span>${brl(d.investimento)}</span></div>
+        <div class="l"><span>Deságio efetivo · classe</span><span>${pct(d.desagio_efetivo, 1)} · ${d.classe}</span></div>
         <div class="l"><span>Lucro estimado</span><span>${brl(d.lucro)}</span></div>`);
     };
     $("pl-grafico").onmouseleave = esconderDica;
@@ -1033,19 +1080,21 @@
       if (linha) selecionarLote(top10[+linha.dataset.ix].id);
     };
 
-    /* melhor oportunidade (maior desconto) */
-    const m = porDesconto[0];
+    /* melhor oportunidade (maior deságio efetivo) */
+    const m = porDesagio[0];
     $("pl-melhor-nota").textContent = m.id + (m.cidade ? " · " + m.cidade : "") +
-      " — maior desconto da planilha (" + (m.ocupado ? "ocupado" : "sem indicação de ocupação") + ")";
+      " — maior deságio efetivo da planilha (" + (m.ocupado ? "ocupado" : "sem indicação de ocupação") + ")";
     $("pl-melhor").innerHTML = `
       <div class="l"><span>Valor de avaliação</span><span>${brl(m.valor_avaliacao)}</span></div>
       ${m.mercado_estimado > 0 ? `<div class="l"><span>Mercado (anúncios dos portais)</span><span>${brl(m.mercado_estimado)}</span></div>` : ""}
-      <div class="l"><span>Lance mínimo</span><span>${brl(m.lance_minimo)} <b>(−${pct(m.desconto, 1)})</b></span></div>
+      <div class="l"><span>Lance mínimo</span><span>${brl(m.lance_minimo)} <b>(−${pct(m.desconto, 1)} s/ avaliação)</b></span></div>
       <div class="l"><span>Custos extras (+${Math.round(m.extrasPct * 100)}%${m.semLeiloeiro ? ", sem leiloeiro" : ""})</span><span>${brl(m.extras)}</span></div>
       <div class="l"><span>Cartório + jurídico${m.ocupado ? " + desocupação" : ""}</span><span>${brl(m.cartorio + P.custo_juridico_fixo + m.desocupacao)}</span></div>
       <div class="l"><span>Posse por ${m.meses} meses</span><span>${brl(m.posse)}</span></div>
       <div class="l"><span>Investimento total</span><span>${brl(m.investimento)}</span></div>
       <div class="l"><span>Venda estimada (${m.fonte_venda})</span><span>${brl(m.venda)}</span></div>
+      <div class="l destaque"><span>Deságio efetivo · classe</span><span class="${m.desagio_efetivo >= 0.2 ? "positivo" : ""}">${pct(m.desagio_efetivo, 1)} · ${chipClasse(m.classe, m)}</span></div>
+      <div class="l"><span>Lance máximo p/ deságio de ${Math.round(DESAGIO_ALVO * 100)}%</span><span>${m.lance_max > 0 ? brl(m.lance_max) : "—"}</span></div>
       <div class="l"><span>Corretagem + IR</span><span>−${brl(m.corretagem + m.ir)}</span></div>
       <div class="l destaque"><span>Lucro líquido</span><span class="${m.lucro >= 0 ? "positivo" : "negativo"}">${brl(m.lucro)}</span></div>
       <div class="l"><span>ROI / retorno mensal</span><span class="${m.lucro >= 0 ? "positivo" : "negativo"}">${pct(m.roi, 1)} · ${pct(m.retMensal, 2)} a.m.</span></div>`;
@@ -1075,7 +1124,8 @@
     if (!notaHtml) {
       notaHtml = (lista.length > MAX_LINHAS
         ? `Mostrando os ${MAX_LINHAS} primeiros de ${lista.length} lotes na ordenação atual. `
-        : "") + "Clique no cabeçalho para reordenar e em uma linha para o detalhamento de custos.";
+        : "") + "Clique no cabeçalho para reordenar e em uma linha para o detalhamento de custos. " +
+        "Isto é uma triagem, não um parecer: antes de dar lance, leia o edital e a matrícula do lote.";
     }
     $("pl-tabela-nota").innerHTML = notaHtml;
     $("pl-corpo").innerHTML = visiveis.map((d, ix) => `
@@ -1112,7 +1162,9 @@
         <div class="l"><span>Situação</span><span>${d.ocupacaoAssumida ? "Sem indicação — assumido ocupado" : (d.ocupado ? "Ocupado" : "Desocupado")}</span></div>
         <div class="l"><span>Avaliação</span><span>${brl(d.valor_avaliacao)}</span></div>
         <div class="l"><span>Lance mínimo</span><span>${brl(d.lance_minimo)}</span></div>
-        <div class="l"><span><b>Desconto</b></span><span><b>${pct(d.desconto, 1)}</b></span></div>
+        <div class="l"><span>Desconto sobre a avaliação</span><span>${pct(d.desconto, 1)}</span></div>
+        ${d.preco_vil ? `<div class="l"><span>⚠ Lance abaixo de 50% da avaliação</span><span>em leilão judicial há risco de anulação por preço vil (CPC, art. 891) — confira a modalidade no edital</span></div>` : ""}
+        ${d.risco_alto ? `<div class="l"><span>⚠ Risco jurídico alto</span><span>o anúncio cita fração ideal, "direitos sobre", usufruto ou falta de matrícula — classe travada em C; leia edital e matrícula</span></div>` : ""}
         ${d.link ? `<div class="l"><span>Anúncio</span><span><a href="${d.link}" target="_blank" rel="noopener">ver no site do leilão ↗</a></span></div>` : ""}
       </div>
       <div><h3>Custos da operação</h3>
@@ -1127,6 +1179,8 @@
         <div class="l"><span>Venda estimada (base: ${d.fonte_venda})</span><span>${brl(d.venda)}</span></div>
         <div class="l"><span>Corretagem (${pct(P.corretagem_venda, 0)})</span><span>−${brl(d.corretagem)}</span></div>
         <div class="l"><span>IR ganho de capital (${pct(P.ir_ganho_capital, 0)})</span><span>−${brl(d.ir)}</span></div>
+        <div class="l"><span><b>Deságio efetivo</b> (custo total vs. mercado)</span><span><b class="${d.desagio_efetivo >= 0.2 ? "positivo" : d.desagio_efetivo < 0 ? "negativo" : ""}">${pct(d.desagio_efetivo, 1)}</b> ${chipClasse(d.classe, d)}</span></div>
+        <div class="l"><span>Lance máximo p/ garantir ${Math.round(DESAGIO_ALVO * 100)}% de deságio</span><span>${d.lance_max > 0 ? brl(d.lance_max) + (d.lance_minimo > d.lance_max ? ' <span class="negativo">(lance mínimo já passa disso)</span>' : "") : "—"}</span></div>
         <div class="l"><span><b>Lucro líquido</b></span><span><b class="${d.lucro >= 0 ? "positivo" : "negativo"}">${brl(d.lucro)}</b></span></div>
         <div class="l"><span>ROI / retorno mensal</span><span>${pct(d.roi, 1)} · ${pct(d.retMensal, 2)} a.m.</span></div>
         <div class="l"><span>Último preço no condomínio</span><span id="cond-${d.id}">${
