@@ -1945,9 +1945,10 @@
       const redesenha = () => { if (!proc.aberto) desenharPlanilha(); };
       const espera = ms => new Promise(ok => setTimeout(ok, ms));
       try {
-        /* TUDO DE UMA VEZ: a estimativa de todos os lotes sai já, em blocos de 40
-           (3 blocos ao mesmo tempo), enquanto uma sonda testa em paralelo se a
-           busca ao vivo nos portais está disponível. */
+        /* TUDO DE UMA VEZ: a estimativa de todos os lotes sai já, em blocos de 20
+           (4 blocos ao mesmo tempo), enquanto uma sonda testa em paralelo se a
+           busca ao vivo nos portais está disponível. Bloco de 20 responde em ~11 s;
+           o de 40 ficava colado no limite de 20 s do servidor. */
         const precificados = new Set();
         statusIA("Buscando o valor de venda de " + alvo.length + " imóveis de uma vez…");
         proc.fase("Todos os imóveis de uma vez",
@@ -1956,7 +1957,7 @@
 
         const sonda = buscaRealLote(alvo[0]).then(r => ({ r }), e => ({ e }));
 
-        const TAM = 40, blocos = [];
+        const TAM = 20, blocos = [];
         for (let i = 0; i < alvo.length; i += TAM) blocos.push(alvo.slice(i, i + TAM));
         let prox = 0, feitosBlocos = 0, falha = null;
         const trabalhador = async () => {
@@ -1965,14 +1966,18 @@
             const linhas = chunk.map(d => 'id "' + d.id + '": ' + fichaDe(d));
             proc.girar(chunk);
             let arr = null;
-            try {
-              arr = await estimarBloco(linhas);
-            } catch (e1) {
-              // limite por minuto do Google: espera e tenta o mesmo bloco mais uma vez
-              if (/429|[Cc]ota|muitas consultas/.test(String(e1.message)) && !falha) {
-                await espera(20000);
-                try { arr = await estimarBloco(linhas); } catch (e2) { falha = e2; }
-              } else { falha = e1; }
+            // limite por minuto do Google ou resposta que não veio: espera e tenta o
+            // mesmo bloco de novo (20 s, 40 s, 60 s) antes de desistir
+            for (let tentativa = 0; !arr && !falha; tentativa++) {
+              try {
+                arr = await estimarBloco(linhas);
+                if (!Array.isArray(arr)) throw new Error("resposta inválida da IA");
+              } catch (e1) {
+                arr = null;
+                const passageiro = /429|[Cc]ota|muitas consultas|inválida|20s|408|503/.test(String(e1.message));
+                if (!passageiro || tentativa >= 3) { falha = e1; break; }
+                await espera(20000 * (tentativa + 1));
+              }
             }
             proc.parar(chunk);
             if (!arr) continue;
@@ -1997,7 +2002,7 @@
             redesenha();
           }
         };
-        await Promise.all([trabalhador(), trabalhador(), trabalhador()]);
+        await Promise.all([trabalhador(), trabalhador(), trabalhador(), trabalhador()]);
         if (falha) throw falha;
 
         /* resultado da sonda: se a busca ao vivo existe, refina com anúncios reais.
