@@ -927,9 +927,11 @@
     const n = semAcento(txt).replace(/²/g, "2");
     const num = re => { const m = n.match(re); return m ? parseFloat(m[1].replace(",", ".")) : NaN; };
     const tipo = (n.split(",")[0] || "").trim();
-    const priv = num(/([\d.,]+) de area privativa/);
-    const total = num(/([\d.,]+) de area total/);
-    const terreno = num(/([\d.,]+) de area do terreno/);
+    // "95,3m² de área privativa" (Arrematador) e "45.46 de área privativa" (Caixa):
+    // o "m2" é opcional — sem isso o regex pegava só o "2" de "m2"
+    const priv = num(/([\d.,]+)\s*(?:m2)?\s+de area privativa/);
+    const total = num(/([\d.,]+)\s*(?:m2)?\s+de area total/);
+    const terreno = num(/([\d.,]+)\s*(?:m2)?\s+de area do terreno/);
     let area = priv > 0 ? priv : (total > 0 ? total : NaN);
     if (!(area > 0) && tipo.includes("terreno")) area = terreno > 0 ? terreno : NaN;
     if (!(area > 0)) area = num(/([\d.,]+)\s*m2/);
@@ -979,7 +981,7 @@
   let valoresIA = {};  // valor de venda por lote, vindo dos portais
   let fontesIA = {};   // resumo da referência encontrada (anúncio/site)
   try {
-    const v = JSON.parse(localStorage.getItem("valores_ia_v1") || "null");
+    const v = JSON.parse(localStorage.getItem("valores_ia_v2") || "null");
     if (v && v.valores) valoresIA = v.valores;
     if (v && v.fontes) fontesIA = v.fontes;
   } catch (e) { /* cache corrompido: ignora */ }
@@ -1927,7 +1929,7 @@
         valoresIA[String(id).trim()] = valor;
         if (resumo) fontesIA[String(id).trim()] = String(resumo).slice(0, 300);
       };
-      const salva = () => localStorage.setItem("valores_ia_v1",
+      const salva = () => localStorage.setItem("valores_ia_v2",
         JSON.stringify({ valores: valoresIA, fontes: fontesIA, em: new Date().toISOString() }));
 
       const base = (ultimaListaPlanilha && ultimaListaPlanilha.length)
